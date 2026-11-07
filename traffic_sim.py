@@ -51,6 +51,21 @@ _DENSITY_TOLERANCE = np.longdouble("1e-18")
 _EPSILON = np.longdouble("1e-30")
 
 
+@dataclass(frozen=True, slots=True)
+class SimulationConfig:
+    """User-selectable physical inputs for one reproducible 1D run."""
+
+    road_length_m: float = ROAD_LENGTH
+    cell_size_m: float = CELL_SIZE
+    initial_density_vehicles_per_m: float = INITIAL_DENSITY
+    free_flow_speed_m_per_s: float = FREE_FLOW_SPEED
+    jam_density_vehicles_per_m: float = JAM_DENSITY
+    inflow_demand_vehicles_per_s: float = INFLOW_DEMAND
+    bottleneck_position_m: float = 805.0
+    lane_reduction: float = LANE_REDUCTION
+    time_step_s: float = TIME_STEP
+
+
 def calculate_greenshields_velocity(current_density: float, free_flow_speed: float, jam_density: float) -> float:
     # Greenshields mathematical relationship: speed = vf * (1 - (k / kj))
     return free_flow_speed * (1 - (current_density / jam_density))
@@ -63,6 +78,7 @@ class SimulationState:
     time_s: np.longdouble
     density_vehicles_per_m: np.ndarray
     cell_edges_m: np.ndarray
+    config: SimulationConfig = SimulationConfig()
 
     @property
     def cell_widths_m(self) -> np.ndarray:
@@ -95,70 +111,83 @@ class LocalCellState:
     flow_vehicles_per_s: np.longdouble
 
 
-def _cell_count() -> int:
+def _cell_count(config: SimulationConfig | None = None) -> int:
     """Return the number of cells needed to cover the exact domain length."""
 
-    return int(math.ceil(ROAD_LENGTH / CELL_SIZE))
+    config = config or SimulationConfig()
+    return int(math.ceil(config.road_length_m / config.cell_size_m))
 
 
-def _build_cell_edges() -> np.ndarray:
+def _build_cell_edges(config: SimulationConfig | None = None) -> np.ndarray:
     """Build monotonic edges, preserving the exact 1,000 m domain endpoint."""
 
-    count = _cell_count()
-    edges = np.arange(count + 1, dtype=np.longdouble) * _LD_CELL_SIZE
-    edges[-1] = _LD_ROAD_LENGTH
+    config = config or SimulationConfig()
+    count = _cell_count(config)
+    edges = np.arange(count + 1, dtype=np.longdouble) * np.longdouble(str(config.cell_size_m))
+    edges[-1] = np.longdouble(str(config.road_length_m))
     return edges
 
 
-def validate_configuration() -> None:
+def _bottleneck_index(config: SimulationConfig) -> int:
+    """Map the requested physical bottleneck coordinate to its grid interface."""
+
+    return min(int(round(config.bottleneck_position_m / config.cell_size_m)), _cell_count(config) - 1)
+
+
+def validate_configuration(config: SimulationConfig | None = None) -> None:
     """Validate physical and numerical assumptions before a run begins."""
 
-    if ROAD_LENGTH <= 0.0 or CELL_SIZE <= 0.0:
+    config = config or SimulationConfig()
+    if config.road_length_m <= 0.0 or config.cell_size_m <= 0.0:
         raise ValueError("ROAD_LENGTH and CELL_SIZE must be positive.")
-    if not 0.0 <= INITIAL_DENSITY <= JAM_DENSITY:
+    if not 0.0 <= config.initial_density_vehicles_per_m <= config.jam_density_vehicles_per_m:
         raise ValueError("INITIAL_DENSITY must lie within [0, JAM_DENSITY].")
-    if not 0.0 < FREE_FLOW_SPEED:
+    if not 0.0 < config.free_flow_speed_m_per_s:
         raise ValueError("FREE_FLOW_SPEED must be positive.")
-    if not 0.0 <= INFLOW_DEMAND:
+    if not 0.0 <= config.inflow_demand_vehicles_per_s:
         raise ValueError("INFLOW_DEMAND must be non-negative.")
-    if not 0.0 <= LANE_REDUCTION <= 1.0:
+    if not 0.0 <= config.lane_reduction <= 1.0:
         raise ValueError("LANE_REDUCTION must lie within [0, 1].")
-    if not 0 <= BOTTLENECK_POSITION < _cell_count():
-        raise ValueError("BOTTLENECK_POSITION must identify a cell in the domain.")
-    if TIME_STEP <= 0.0 or TOTAL_DURATION < 0:
-        raise ValueError("TIME_STEP must be positive and TOTAL_DURATION non-negative.")
+    if not 0.0 <= config.bottleneck_position_m < config.road_length_m:
+        raise ValueError("BOTTLENECK_POSITION must lie within the road domain.")
+    if config.time_step_s <= 0.0:
+        raise ValueError("TIME_STEP must be positive.")
 
-    widths = np.diff(_build_cell_edges())
-    cfl_limit = np.min(widths) / _LD_FREE_FLOW_SPEED
-    if _LD_TIME_STEP > cfl_limit + _DENSITY_TOLERANCE:
+    widths = np.diff(_build_cell_edges(config))
+    cfl_limit = np.min(widths) / np.longdouble(str(config.free_flow_speed_m_per_s))
+    if np.longdouble(str(config.time_step_s)) > cfl_limit + _DENSITY_TOLERANCE:
         raise ValueError(
-            f"CFL condition violated: TIME_STEP={TIME_STEP} exceeds "
+            f"CFL condition violated: TIME_STEP={config.time_step_s} exceeds "
             f"minimum-width limit {float(cfl_limit):.12g} s."
         )
 
 
-def initialize_state() -> SimulationState:
+def initialize_state(config: SimulationConfig | None = None) -> SimulationState:
     """Create the initial uniform-density state with an empty obstacle cell."""
 
-    validate_configuration()
-    edges = _build_cell_edges()
-    density = np.full(_cell_count(), _LD_INITIAL_DENSITY, dtype=np.longdouble)
-    density[BOTTLENECK_POSITION] = np.longdouble(0)
+    config = config or SimulationConfig()
+    validate_configuration(config)
+    edges = _build_cell_edges(config)
+    density = np.full(_cell_count(config), np.longdouble(str(config.initial_density_vehicles_per_m)), dtype=np.longdouble)
+    # The closure acts on a road interface; it does not erase the density
+    # state of the adjacent physical road cell.
     return SimulationState(
         time_s=np.longdouble(0),
         density_vehicles_per_m=density,
         cell_edges_m=edges,
+        config=config,
     )
 
 
-def _velocity_from_density(density: np.ndarray) -> np.ndarray:
+def _velocity_from_density(density: np.ndarray, config: SimulationConfig | None = None) -> np.ndarray:
     """Evaluate the manually entered velocity law for every cell."""
 
+    config = config or SimulationConfig()
     velocity = np.asarray(
         calculate_greenshields_velocity(
             density,
-            _LD_FREE_FLOW_SPEED,
-            _LD_JAM_DENSITY,
+            np.longdouble(str(config.free_flow_speed_m_per_s)),
+            np.longdouble(str(config.jam_density_vehicles_per_m)),
         ),
         dtype=np.longdouble,
     )
@@ -167,15 +196,19 @@ def _velocity_from_density(density: np.ndarray) -> np.ndarray:
     velocity_tolerance = _DENSITY_TOLERANCE * np.longdouble(10)
     if np.any(velocity < -velocity_tolerance):
         raise FloatingPointError("The manual velocity relationship returned a negative speed.")
-    if np.any(velocity > _LD_FREE_FLOW_SPEED + velocity_tolerance):
+    free_flow_speed = np.longdouble(str(config.free_flow_speed_m_per_s))
+    if np.any(velocity > free_flow_speed + velocity_tolerance):
         raise FloatingPointError("The manual velocity relationship exceeded FREE_FLOW_SPEED.")
     return np.maximum(velocity, np.longdouble(0))
 
 
-def _flow_from_density(density: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _flow_from_density(
+    density: np.ndarray,
+    config: SimulationConfig | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
     """Return velocity and flow arrays from a density array."""
 
-    velocity = _velocity_from_density(density)
+    velocity = _velocity_from_density(density, config)
     flow = density * velocity
     if not np.all(np.isfinite(flow)):
         raise FloatingPointError("The calculated flow contains a non-finite value.")
@@ -185,11 +218,14 @@ def _flow_from_density(density: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 def _demand_supply(
     density: np.ndarray,
     flow: np.ndarray,
+    config: SimulationConfig | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.longdouble]:
     """Build LWR demand and supply arrays for the concave Greenshields law."""
 
-    critical_density = _LD_JAM_DENSITY / np.longdouble(2)
-    critical_velocity = _velocity_from_density(np.asarray([critical_density]))[0]
+    config = config or SimulationConfig()
+    jam_density = np.longdouble(str(config.jam_density_vehicles_per_m))
+    critical_density = jam_density / np.longdouble(2)
+    critical_velocity = _velocity_from_density(np.asarray([critical_density]), config)[0]
     capacity = critical_density * critical_velocity
     is_free_flow = density <= critical_density
     demand = np.where(is_free_flow, flow, capacity)
@@ -200,13 +236,14 @@ def _demand_supply(
 def _interface_fluxes(state: SimulationState) -> np.ndarray:
     """Return all `n + 1` interface fluxes in vehicles per second."""
 
+    config = state.config
     density = state.density_vehicles_per_m
-    _, flow = _flow_from_density(density)
-    demand, supply, _ = _demand_supply(density, flow)
+    _, flow = _flow_from_density(density, config)
+    demand, supply, _ = _demand_supply(density, flow, config)
     flux = np.empty(density.size + 1, dtype=np.longdouble)
 
     # Upstream boundary: prescribed demand entering an available first cell.
-    flux[0] = np.minimum(_LD_INFLOW_DEMAND, supply[0])
+    flux[0] = np.minimum(np.longdouble(str(config.inflow_demand_vehicles_per_s)), supply[0])
 
     # Interior Godunov flux: sending demand from the left, receiving supply on
     # the right. This is the conservative LWR Riemann-solver construction.
@@ -215,14 +252,11 @@ def _interface_fluxes(state: SimulationState) -> np.ndarray:
     # Transparent free-exit boundary: no artificial receiving restriction.
     flux[-1] = demand[-1]
 
-    # Apply the localized closure to both faces of the obstacle cell. The
-    # second assignment ensures the displayed obstacle remains an empty
-    # structural cell while the complete closure is active.
-    closure_multiplier = np.longdouble(1.0 - LANE_REDUCTION)
-    obstacle = BOTTLENECK_POSITION
-    flux[obstacle] *= closure_multiplier
-    if obstacle + 1 < flux.size:
-        flux[obstacle + 1] *= closure_multiplier
+    # Apply the selected capacity reduction at one road interface. This keeps
+    # the cell density intact and preserves the finite-volume conservation law.
+    closure_multiplier = np.longdouble(1.0 - config.lane_reduction)
+    obstacle_interface = _bottleneck_index(config)
+    flux[obstacle_interface] *= closure_multiplier
 
     if not np.all(np.isfinite(flux)) or np.any(flux < 0):
         raise FloatingPointError("The interface flux array is invalid.")
@@ -233,25 +267,28 @@ def advance_state(state: SimulationState) -> SimulationState:
     """Advance one conservative time step using the LWR finite-volume update."""
 
     flux = _interface_fluxes(state)
+    config = state.config
     widths = state.cell_widths_m
     density = state.density_vehicles_per_m
-    next_density = density - (_LD_TIME_STEP / widths) * (flux[1:] - flux[:-1])
+    dt = np.longdouble(str(config.time_step_s))
+    jam_density = np.longdouble(str(config.jam_density_vehicles_per_m))
+    next_density = density - (dt / widths) * (flux[1:] - flux[:-1])
 
     if not np.all(np.isfinite(next_density)):
         raise FloatingPointError("The density update produced a non-finite value.")
     if np.any(next_density < -_DENSITY_TOLERANCE):
         raise FloatingPointError("The density update produced a negative density.")
-    if np.any(next_density > _LD_JAM_DENSITY + _DENSITY_TOLERANCE):
+    if np.any(next_density > jam_density + _DENSITY_TOLERANCE):
         raise FloatingPointError("The density update exceeded JAM_DENSITY.")
 
     # Only round-off-scale corrections are clipped. A material correction would
     # hide a scheme/configuration error and is therefore rejected above.
-    next_density = np.clip(next_density, np.longdouble(0), _LD_JAM_DENSITY)
-    next_density[BOTTLENECK_POSITION] = np.longdouble(0)
+    next_density = np.clip(next_density, np.longdouble(0), jam_density)
     return SimulationState(
-        time_s=state.time_s + _LD_TIME_STEP,
+        time_s=state.time_s + dt,
         density_vehicles_per_m=next_density,
         cell_edges_m=state.cell_edges_m,
+        config=config,
     )
 
 
@@ -260,7 +297,7 @@ def local_cell_state(state: SimulationState, cell_index: int) -> LocalCellState:
 
     if not 0 <= cell_index < state.density_vehicles_per_m.size:
         raise IndexError("cell_index is outside the spatial grid.")
-    velocity, flow = _flow_from_density(state.density_vehicles_per_m)
+    velocity, flow = _flow_from_density(state.density_vehicles_per_m, state.config)
     return LocalCellState(
         cell_index=cell_index,
         x_start_m=state.cell_edges_m[cell_index],
@@ -274,7 +311,7 @@ def local_cell_state(state: SimulationState, cell_index: int) -> LocalCellState:
 def metrics_snapshot(state: SimulationState) -> dict[str, np.longdouble]:
     """Return Indo-HCM-oriented audit metrics for the current state."""
 
-    velocity, flow = _flow_from_density(state.density_vehicles_per_m)
+    velocity, flow = _flow_from_density(state.density_vehicles_per_m, state.config)
     mean_density = np.mean(state.density_vehicles_per_m, dtype=np.longdouble)
     mean_speed = np.mean(velocity, dtype=np.longdouble)
     mean_flow = np.mean(flow, dtype=np.longdouble)
@@ -296,7 +333,7 @@ def character_mapping_array(state: SimulationState) -> np.ndarray:
 
     mapping = np.zeros(state.density_vehicles_per_m.size, dtype=np.int8)
     mapping[state.density_vehicles_per_m > _EPSILON] = 1
-    mapping[BOTTLENECK_POSITION] = 9
+    mapping[_bottleneck_index(state.config)] = 9
     return mapping
 
 
@@ -333,20 +370,22 @@ def run_simulation(
     *,
     animate: bool = OUTPUT_TYPE == "TERMINAL",
     realtime: bool = True,
+    config: SimulationConfig | None = None,
 ) -> SimulationState:
     """Run the requested number of updates and return the final state."""
 
     if steps < 0:
         raise ValueError("steps must be non-negative.")
-    state = initialize_state()
+    config = config or SimulationConfig()
+    state = initialize_state(config)
     for _ in range(steps + 1):
         if animate:
             render_terminal_frame(state)
-        if state.time_s >= np.longdouble(steps) * _LD_TIME_STEP:
+        if state.time_s >= np.longdouble(steps) * np.longdouble(str(config.time_step_s)):
             break
         state = advance_state(state)
         if animate and realtime:
-            time.sleep(TIME_STEP)
+            time.sleep(config.time_step_s)
     return state
 
 
