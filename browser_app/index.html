@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101a28">
+  <meta name="description" content="A friendly, interactive traffic shockwave simulator powered by a conservative 1D LWR model.">
+  <title>Flowline — Traffic Flow Studio</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#top" aria-label="Flowline home"><span class="brand-mark" aria-hidden="true">↗</span><span>flowline</span></a>
+    <span class="top-note">TRAFFIC FLOW STUDIO <i></i> BROWSER EDITION</span>
+  </header>
+
+  <main id="top" class="layout">
+    <section class="intro">
+      <div class="eyebrow"><span class="live-dot"></span> A little clarity in the traffic</div>
+      <h1>See the jam<br><em>move.</em></h1>
+      <p>Watch a traffic wave form, travel upstream, and ease away. Change the road conditions and explore what happens.</p>
+      <div class="model-tag"><span aria-hidden="true">⌁</span> 1D traffic physics <b>·</b> 2D road view</div>
+    </section>
+
+    <section class="workspace" aria-label="Traffic simulation">
+      <div class="scene-head">
+        <div><div class="section-kicker">LIVE ROAD VIEW <span class="scene-status" id="sceneStatus">READY</span></div><h2>One road, one evolving story.</h2></div>
+        <div class="clock"><span class="clock-label">SIMULATED TIME</span><strong id="timeReadout">00:00</strong></div>
+      </div>
+      <div class="road-wrap">
+        <canvas id="roadCanvas" role="img" aria-label="Animated two-lane illustration of traffic density along a one-kilometre road"></canvas>
+        <div class="road-scale"><span>0 m <small>UPSTREAM</small></span><span class="road-key"><i class="key-car"></i> moving traffic <i class="key-jam"></i> restriction</span><span>1,000 m <small>DOWNSTREAM</small></span></div>
+      </div>
+
+      <div class="readouts" aria-live="polite">
+        <div><span>ROAD DENSITY</span><strong id="densityReadout">20 <small>PCU / km</small></strong></div>
+        <div><span>AVERAGE SPEED</span><strong id="speedReadout">— <small>km / h</small></strong></div>
+        <div><span>TRAFFIC ON ROAD</span><strong id="massReadout">20.0 <small>PCU</small></strong></div>
+      </div>
+
+      <div class="timeline"><div class="timeline-labels"><span>RUN PROGRESS</span><span id="progressLabel">Ready when you are</span></div><input id="scrubber" aria-label="Simulation timeline" type="range" min="0" max="0" value="0" disabled></div>
+
+      <div class="transport">
+        <button class="primary-button" id="playButton" type="button"><span id="playIcon" aria-hidden="true">▶</span><span id="playText">Run simulation</span></button>
+        <button class="quiet-button" id="resetButton" type="button" disabled>Reset</button>
+        <label class="speed-control">Playback <select id="speedSelect" aria-label="Playback speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="3">3×</option></select></label>
+      </div>
+    </section>
+
+    <aside class="controls" aria-label="Simulation settings">
+      <div class="controls-heading"><div><div class="section-kicker">MAKE IT YOURS</div><h2>Set the scene</h2></div><span class="settings-icon" aria-hidden="true">✳</span></div>
+      <p class="controls-intro">A couple of small changes can make a big difference.</p>
+      <label class="field-label" for="scenarioSelect">Road situation</label>
+      <select class="field-select" id="scenarioSelect">
+        <option value="closure">Road fully blocked</option>
+        <option value="partial">One lane restricted</option>
+        <option value="busy">Busy road, no blockage</option>
+      </select>
+      <div class="field-hint" id="scenarioHint">Traffic queues behind a full restriction at 805 m.</div>
+
+      <label class="field-label duration-label" for="durationSelect">How long to simulate?</label>
+      <select class="field-select" id="durationSelect">
+        <option value="60">1 minute</option>
+        <option value="180" selected>3 minutes</option>
+        <option value="300">5 minutes</option>
+      </select>
+
+      <details class="physics-details">
+        <summary>What’s under the hood?</summary>
+        <p>The road is a one-dimensional chain of 7 m cells. Vehicle density is updated every 0.25 seconds using a conservative LWR traffic-flow solver and a Greenshields speed–density relationship. Playback speed changes only how quickly the animation runs.</p>
+        <p>The two lanes and car drawings help you read the traffic pattern; they are not individually simulated vehicles or a calibrated 2D model.</p>
+      </details>
+
+      <div class="download-area"><div class="section-kicker">TAKE YOUR RESULTS</div><p>Save the full run to explore or share.</p><div class="download-buttons"><button id="csvButton" class="download-button" type="button" disabled>↓ <span>Download CSV</span></button><button id="jsonButton" class="download-button" type="button" disabled>↓ <span>Download JSON</span></button></div></div>
+    </aside>
+
+    <footer class="footnote"><span><i class="foot-dot"></i> No accounts, downloads, or data sent anywhere.</span><span>Built for exploring, not traffic engineering decisions.</span></footer>
+  </main>
+  <noscript>This browser app needs JavaScript enabled to run the simulation.</noscript>
+</body>
+</html>
