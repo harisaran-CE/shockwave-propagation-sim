@@ -79,6 +79,7 @@ class SimulationState:
     density_vehicles_per_m: np.ndarray
     cell_edges_m: np.ndarray
     config: SimulationConfig = SimulationConfig()
+    cumulative_inflow_vehicles: np.longdouble = np.longdouble(0)
 
     @property
     def cell_widths_m(self) -> np.ndarray:
@@ -289,6 +290,7 @@ def advance_state(state: SimulationState) -> SimulationState:
         density_vehicles_per_m=next_density,
         cell_edges_m=state.cell_edges_m,
         config=config,
+        cumulative_inflow_vehicles=state.cumulative_inflow_vehicles + dt * flux[0],
     )
 
 

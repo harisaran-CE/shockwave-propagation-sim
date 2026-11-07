@@ -5,10 +5,12 @@ from __future__ import annotations
 import csv
 import bisect
 import json
+import time
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
+import numpy as np
 import traffic_sim
 
 
@@ -42,6 +44,8 @@ class FlowlineApp(tk.Tk):
 
         self.history: list[traffic_sim.SimulationState] = []
         self.current_step = 0
+        self.playback_position = 0.0
+        self._last_playback_tick: float | None = None
         self.playing = False
         self.after_id: str | None = None
         self.is_scrubbing = False
@@ -420,6 +424,7 @@ class FlowlineApp(tk.Tk):
                     self.update_idletasks()
             self.history = states
             self.current_step = 0
+            self.playback_position = 0.0
             self.timeline.configure(to=self.total_steps)
             self.timeline.set(0)
             self.play_button.configure(state="normal")
@@ -437,6 +442,7 @@ class FlowlineApp(tk.Tk):
         self.pause()
         self.history = []
         self.current_step = 0
+        self.playback_position = 0.0
         self.timeline.set(0)
         self.play_button.configure(state="disabled", text="▶  Play")
         self.csv_button.configure(state="disabled")
@@ -452,11 +458,12 @@ class FlowlineApp(tk.Tk):
             self.play()
 
     def play(self) -> None:
-        if not self.history or self.current_step >= len(self.history) - 1:
+        if not self.history or self.playback_position >= len(self.history) - 1:
             return
         self.playing = True
+        self._last_playback_tick = time.perf_counter()
         self.play_button.configure(text="❚❚  Pause")
-        self._play_next_frame()
+        self.after_id = self.after(33, self._play_next_frame)
 
     def pause(self) -> None:
         self.playing = False
@@ -470,14 +477,23 @@ class FlowlineApp(tk.Tk):
     def _play_next_frame(self) -> None:
         if not self.playing:
             return
-        if self.current_step + 1 >= len(self.history):
+        now = time.perf_counter()
+        elapsed = max(0.0, now - (self._last_playback_tick or now))
+        self._last_playback_tick = now
+        scale = {"0.25x": 0.25, "0.5x": 0.5, "0.75x": 0.75, "1x": 1.0, "2x": 2.0, "3x": 3.0}[self.speed_var.get()]
+        self.playback_position += elapsed * scale / self.run_config.time_step_s
+        final_position = len(self.history) - 1
+        if self.playback_position >= final_position:
+            self.playback_position = float(final_position)
+        previous_step = self.current_step
+        self.current_step = min(int(self.playback_position), final_position)
+        display_state = self._state_at_position(self.playback_position)
+        self.timeline.set(self.playback_position)
+        self._render_frame(display_state, update_chart=self.current_step != previous_step)
+        if self.playback_position >= final_position:
             self.pause()
             return
-        self.current_step += 1
-        self.timeline.set(self.current_step)
-        self._render_frame()
-        scale = {"0.25x": 0.25, "0.5x": 0.5, "0.75x": 0.75, "1x": 1.0, "2x": 2.0, "3x": 3.0}[self.speed_var.get()]
-        self.after_id = self.after(max(15, round(self.run_config.time_step_s * 1000 / scale)), self._play_next_frame)
+        self.after_id = self.after(33, self._play_next_frame)
 
     def _restart_if_playing(self) -> None:
         if self.playing:
@@ -492,20 +508,51 @@ class FlowlineApp(tk.Tk):
         self.is_scrubbing = False
 
     def scrub_to(self, raw_step: str) -> None:
-        if not self.history:
+        if not self.history or self.playing:
             return
         step = max(0, min(len(self.history) - 1, round(float(raw_step))))
-        if step != self.current_step:
+        if step != self.current_step or self.playback_position != float(step):
             self.current_step = step
+            self.playback_position = float(step)
             self._render_frame()
 
-    def _render_frame(self) -> None:
+    def _state_at_position(self, position: float) -> traffic_sim.SimulationState:
+        """Interpolate a display snapshot between adjacent solver states."""
+
+        position = max(0.0, min(len(self.history) - 1, position))
+        lower = int(position)
+        upper = min(lower + 1, len(self.history) - 1)
+        fraction = np.longdouble(str(position - lower))
+        if fraction == 0 or upper == lower:
+            return self.history[lower]
+
+        first = self.history[lower]
+        second = self.history[upper]
+        return traffic_sim.SimulationState(
+            time_s=first.time_s + (second.time_s - first.time_s) * fraction,
+            density_vehicles_per_m=first.density_vehicles_per_m + (
+                second.density_vehicles_per_m - first.density_vehicles_per_m
+            ) * fraction,
+            cell_edges_m=first.cell_edges_m,
+            config=first.config,
+            cumulative_inflow_vehicles=first.cumulative_inflow_vehicles + (
+                second.cumulative_inflow_vehicles - first.cumulative_inflow_vehicles
+            ) * fraction,
+        )
+
+    def _render_frame(
+        self,
+        state: traffic_sim.SimulationState | None = None,
+        *,
+        update_chart: bool = True,
+    ) -> None:
         if not self.history:
             return
-        state = self.history[self.current_step]
+        state = state or self.history[self.current_step]
         self._update_metrics(state)
         self._draw_road(state)
-        self._draw_chart()
+        if update_chart:
+            self._draw_chart()
         seconds = float(state.time_s)
         total_seconds = float(self.history[-1].time_s)
         self.time_readout.configure(text=f"{self._format_time(seconds)} / {self._format_time(total_seconds)}")
@@ -541,7 +588,12 @@ class FlowlineApp(tk.Tk):
         width = max(canvas.winfo_width(), 600)
         left, right = 42, width - 42
         road_top, road_bottom = 49, 133
-        state = state or traffic_sim.initialize_state()
+        if state is None:
+            state = (
+                self._state_at_position(self.playback_position)
+                if self.history
+                else traffic_sim.initialize_state(self.run_config)
+            )
         edges = state.cell_edges_m
         densities = state.density_vehicles_per_m
         canvas.create_text(left, 22, text="START", anchor="w", fill=COLORS["muted"], font=("Segoe UI", 8, "bold"))
@@ -551,32 +603,60 @@ class FlowlineApp(tk.Tk):
         canvas.create_line(left, road_top + 5, right, road_top + 5, fill="#718096", width=1)
         canvas.create_line(left, road_bottom - 5, right, road_bottom - 5, fill="#718096", width=1)
 
-        # Vehicle markers visualize continuum density; they are not separately
-        # tracked vehicles in the underlying LWR solver.
+        # Keep each displayed marker attached to a fixed parcel of mass. The
+        # old per-frame quantiles rescaled every marker whenever total mass
+        # changed, making cars jump across a full closure and snap back.
+        cumulative_mass = []
+        running_mass = 0.0
+        for cell, density in enumerate(densities):
+            running_mass += float(density) * float(edges[cell + 1] - edges[cell])
+            cumulative_mass.append(running_mass)
+
         total_mass = max(0.0, float(state.vehicle_mass))
-        marker_count = min(160, int(round(total_mass)))
-        if marker_count:
-            cumulative_mass = []
-            running_mass = 0.0
-            for cell, density in enumerate(densities):
-                running_mass += float(density) * float(edges[cell + 1] - edges[cell])
-                cumulative_mass.append(running_mass)
-            for marker in range(marker_count):
-                target_mass = (marker + 0.5) * total_mass / marker_count
-                cell = min(bisect.bisect_left(cumulative_mass, target_mass), len(densities) - 1)
-                previous_mass = cumulative_mass[cell - 1] if cell else 0.0
-                density = max(float(densities[cell]), 1e-12)
-                position_m = float(edges[cell]) + (target_mass - previous_mass) / density
-                x = left + position_m / state.config.road_length_m * (right - left)
-                y = 68 if marker % 2 == 0 else 113
-                body = "#64b5f6" if marker % 3 else "#f4f7fb"
-                canvas.create_rectangle(x - 9, y - 5, x + 9, y + 5, fill=body, outline="#182235", width=1)
-                canvas.create_rectangle(x - 4, y - 4, x + 4, y + 1, fill="#b9e2ff", outline="")
-                canvas.create_oval(x - 6, y + 3, x - 2, y + 7, fill="#111827", outline="")
-                canvas.create_oval(x + 3, y + 3, x + 7, y + 7, fill="#111827", outline="")
+        initial_state = self.history[0] if self.history else state
+        initial_mass = max(0.0, float(initial_state.vehicle_mass))
+        initial_marker_count = min(160, int(round(initial_mass)))
+        inflow_mass = max(0.0, float(state.cumulative_inflow_vehicles))
+        inflow_marker_count = min(160 - initial_marker_count, int(inflow_mass + 0.5))
+        marker_ranks = [
+            ((marker + 0.5) * initial_mass / initial_marker_count + inflow_mass, marker)
+            for marker in range(initial_marker_count)
+        ] if initial_marker_count else []
+        marker_ranks.extend(
+            (inflow_mass - (marker + 0.5), initial_marker_count + marker)
+            for marker in range(inflow_marker_count)
+        )
 
         bottleneck = traffic_sim._bottleneck_index(state.config)
         closure_x = left + float(edges[bottleneck]) / state.config.road_length_m * (right - left)
+        upstream_mass_at_closure = cumulative_mass[bottleneck - 1] if bottleneck > 0 else 0.0
+        marker_count = 0
+        for target_mass, marker in marker_ranks:
+            if target_mass < 0.0 or target_mass > total_mass + 1e-8:
+                continue
+            cell = min(bisect.bisect_right(cumulative_mass, target_mass), len(densities) - 1)
+            previous_mass = cumulative_mass[cell - 1] if cell else 0.0
+            density = float(densities[cell])
+            if density <= 0.0:
+                continue
+            position_m = float(edges[cell]) + (target_mass - previous_mass) / density
+            position_m = min(float(edges[cell + 1]), max(float(edges[cell]), position_m))
+            x = left + position_m / state.config.road_length_m * (right - left)
+            if state.config.lane_reduction >= 1.0:
+                # Keep the full car body on its side of a complete closure.
+                if target_mass <= upstream_mass_at_closure:
+                    x = min(x, closure_x - 10)
+                else:
+                    x = max(x, closure_x + 10)
+            x = min(right - 9, max(left + 9, x))
+            y = 68 if marker % 2 == 0 else 113
+            body = "#64b5f6" if marker % 3 else "#f4f7fb"
+            canvas.create_rectangle(x - 9, y - 5, x + 9, y + 5, fill=body, outline="#182235", width=1)
+            canvas.create_rectangle(x - 4, y - 4, x + 4, y + 1, fill="#b9e2ff", outline="")
+            canvas.create_oval(x - 6, y + 3, x - 2, y + 7, fill="#111827", outline="")
+            canvas.create_oval(x + 3, y + 3, x + 7, y + 7, fill="#111827", outline="")
+            marker_count += 1
+
         if state.config.lane_reduction > 0:
             canvas.create_rectangle(closure_x - 4, road_top - 7, closure_x + 4, road_bottom + 7, fill=COLORS["purple"], outline="white", width=1)
             for stripe_y in range(road_top - 4, road_bottom + 4, 12):
