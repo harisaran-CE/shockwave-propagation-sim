@@ -28,6 +28,9 @@
   let config = scenarioConfig();
   let frames = [];
   let frameIndex = 0;
+  let playbackPosition = 0;
+  let lastPlaybackTime = 0;
+  let displayFrame = null;
   let timer = 0;
   let playing = false;
   let resizeObserver;
@@ -73,29 +76,36 @@
       next[i] = density[i] - (DT / widths[i]) * (flux[i + 1] - flux[i]);
       next[i] = Math.max(0, Math.min(JAM_DENSITY, next[i]));
     }
-    return next;
+    return { density: next, inflowFlux: flux[0] };
   }
 
-  function snapshot(density, time) {
+  function snapshot(density, time, cumulativeInflow = 0) {
     let mass = 0, densitySum = 0, speedSum = 0;
     for (let i = 0; i < CELL_COUNT; i++) {
       mass += density[i] * widths[i];
       densitySum += density[i];
       speedSum += FREE_SPEED * Math.max(0, 1 - density[i] / JAM_DENSITY);
     }
-    return { time, density, mass, meanDensity: densitySum / CELL_COUNT, meanSpeed: speedSum / CELL_COUNT };
+    return { time, density, mass, meanDensity: densitySum / CELL_COUNT, meanSpeed: speedSum / CELL_COUNT, cumulativeInflow };
   }
 
   function buildRun() {
     config = scenarioConfig();
     const steps = Math.round(Number(ui.duration.value) / DT);
     let density = new Float64Array(CELL_COUNT).fill(0.02);
+    let cumulativeInflow = 0;
     frames = new Array(steps + 1);
     for (let step = 0; step <= steps; step++) {
-      frames[step] = snapshot(density, step * DT);
-      if (step < steps) density = advance(density);
+      frames[step] = snapshot(density, step * DT, cumulativeInflow);
+      if (step < steps) {
+        const update = advance(density);
+        density = update.density;
+        cumulativeInflow += DT * update.inflowFlux;
+      }
     }
     frameIndex = 0;
+    playbackPosition = 0;
+    displayFrame = frames[0];
     ui.scrubber.max = String(frames.length - 1);
     ui.scrubber.value = '0';
     ui.scrubber.disabled = false;
@@ -118,15 +128,33 @@
     ui.status.classList.toggle('is-running', Boolean(active));
   }
 
-  function updateFrame() {
-    const frame = frames[frameIndex];
+  function interpolateFrame(position) {
+    const lower = Math.max(0, Math.min(frames.length - 1, Math.floor(position)));
+    const upper = Math.min(lower + 1, frames.length - 1);
+    const fraction = position - lower;
+    if (fraction === 0 || upper === lower) return frames[lower];
+    const first = frames[lower];
+    const second = frames[upper];
+    const density = new Float64Array(CELL_COUNT);
+    for (let i = 0; i < CELL_COUNT; i++) {
+      density[i] = first.density[i] + (second.density[i] - first.density[i]) * fraction;
+    }
+    return snapshot(
+      density,
+      first.time + (second.time - first.time) * fraction,
+      first.cumulativeInflow + (second.cumulativeInflow - first.cumulativeInflow) * fraction
+    );
+  }
+
+  function updateFrame(frame = frames[frameIndex], position = frameIndex) {
     if (!frame) return;
+    displayFrame = frame;
     ui.time.textContent = formatTime(frame.time);
     ui.density.innerHTML = `${(frame.meanDensity * 1000).toFixed(1)} <small>PCU / km</small>`;
     ui.speed.innerHTML = `${(frame.meanSpeed * 3.6).toFixed(1)} <small>km / h</small>`;
     ui.mass.innerHTML = `${frame.mass.toFixed(1)} <small>PCU</small>`;
-    ui.scrubber.value = String(frameIndex);
-    const percentage = frames.length > 1 ? Math.round(frameIndex / (frames.length - 1) * 100) : 0;
+    ui.scrubber.value = String(position);
+    const percentage = frames.length > 1 ? Math.round(position / (frames.length - 1) * 100) : 0;
     ui.progress.textContent = `${frames.length} saved frames · ${percentage}% complete`;
     drawRoad(frame);
   }
@@ -137,7 +165,7 @@
     context.roundRect(x, y, width, height, r);
   }
 
-  function drawRoad(frame = frames[frameIndex]) {
+  function drawRoad(frame = displayFrame || frames[frameIndex]) {
     if (!ctx) return;
     const bounds = canvas.getBoundingClientRect();
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -189,61 +217,95 @@
   }
 
   function drawVehicles(frame) {
-    const totalMarkers = Math.min(42, Math.max(1, Math.round(frame.mass)));
-    let cell = 0, cumulative = 0;
-    const targets = Array.from({ length: totalMarkers }, (_, i) => (i + 0.5) * frame.mass / totalMarkers);
-    const positions = [];
-    for (let j = 0; j < targets.length; j++) {
-      const target = targets[j];
-      while (cell < CELL_COUNT - 1 && cumulative + frame.density[cell] * widths[cell] < target) {
-        cumulative += frame.density[cell] * widths[cell]; cell++;
-      }
-      const within = frame.density[cell] > 0 ? (target - cumulative) / frame.density[cell] : 0;
-      positions.push(Math.max(edges[cell] + 2, Math.min(edges[cell + 1] - 2, edges[cell] + within)));
+    const initialMass = frames.length ? frames[0].mass : frame.mass;
+    const initialMarkerCount = Math.min(42, Math.max(0, Math.round(initialMass)));
+    const inflowMarkerCount = Math.min(42 - initialMarkerCount, Math.floor(frame.cumulativeInflow + 0.5));
+    const markers = [];
+    for (let i = 0; i < initialMarkerCount; i++) {
+      markers.push({ rank: (i + 0.5) * initialMass / initialMarkerCount + frame.cumulativeInflow, id: i });
     }
-    for (let i = 0; i < positions.length; i++) {
-      const x = positions[i];
-      const y = i % 2 === 0 ? 79 : 133;
-      const localCell = Math.min(CELL_COUNT - 1, Math.floor(x / CELL_SIZE));
+    for (let i = 0; i < inflowMarkerCount; i++) {
+      markers.push({ rank: frame.cumulativeInflow - (i + 0.5), id: initialMarkerCount + i });
+    }
+
+    const cumulativeMass = new Float64Array(CELL_COUNT);
+    let runningMass = 0;
+    for (let cell = 0; cell < CELL_COUNT; cell++) {
+      runningMass += frame.density[cell] * widths[cell];
+      cumulativeMass[cell] = runningMass;
+    }
+    const restrictionIndex = Math.min(Math.round(config.position / CELL_SIZE), CELL_COUNT - 1);
+    const massBeforeRestriction = restrictionIndex > 0 ? cumulativeMass[restrictionIndex - 1] : 0;
+
+    for (const marker of markers) {
+      const target = marker.rank;
+      if (target < 0 || target > frame.mass + 1e-8) continue;
+      let cell = 0;
+      while (cell < CELL_COUNT - 1 && cumulativeMass[cell] <= target) cell++;
+      const massBeforeCell = cell > 0 ? cumulativeMass[cell - 1] : 0;
+      const density = frame.density[cell];
+      if (density <= 0) continue;
+      const x = Math.max(edges[cell], Math.min(edges[cell + 1], edges[cell] + (target - massBeforeCell) / density));
+      let roadX = x;
+      if (config.reduction >= 1) {
+        // A complete restriction is impermeable in the model. Keep the whole
+        // illustrative car on the same side, even when it reaches the line.
+        roadX = target <= massBeforeRestriction
+          ? Math.min(roadX, config.position - 16)
+          : Math.max(roadX, config.position + 16);
+      }
+      roadX = Math.max(11, Math.min(989, roadX));
+      const y = marker.id % 2 === 0 ? 79 : 133;
+      const localCell = Math.min(CELL_COUNT - 1, cell);
       const speedFraction = Math.max(0.04, 1 - frame.density[localCell] / JAM_DENSITY);
       const tint = speedFraction < .28 ? '#f1b778' : (speedFraction < .58 ? '#9bd8ba' : '#88dfe0');
       ctx.save();
       ctx.shadowColor = `${tint}55`; ctx.shadowBlur = 7;
-      ctx.fillStyle = tint; roundedRect(ctx, x - 9, y - 7, 18, 13, 5); ctx.fill();
+      ctx.fillStyle = tint; roundedRect(ctx, roadX - 9, y - 7, 18, 13, 5); ctx.fill();
       ctx.shadowBlur = 0; ctx.fillStyle = '#21313b';
-      roundedRect(ctx, x - 3.5, y - 5, 8, 9, 3); ctx.fill();
-      ctx.fillStyle = '#263744'; ctx.fillRect(x - 6, y - 8, 4, 2); ctx.fillRect(x + 3, y - 8, 4, 2);
-      ctx.fillRect(x - 6, y + 6, 4, 2); ctx.fillRect(x + 3, y + 6, 4, 2);
+      roundedRect(ctx, roadX - 3.5, y - 5, 8, 9, 3); ctx.fill();
+      ctx.fillStyle = '#263744'; ctx.fillRect(roadX - 6, y - 8, 4, 2); ctx.fillRect(roadX + 3, y - 8, 4, 2);
+      ctx.fillRect(roadX - 6, y + 6, 4, 2); ctx.fillRect(roadX + 3, y + 6, 4, 2);
       ctx.restore();
     }
   }
 
   function stopPlayback() {
     playing = false;
-    window.clearTimeout(timer);
+    if (timer) window.cancelAnimationFrame(timer);
+    timer = 0;
+    lastPlaybackTime = 0;
     ui.playIcon.textContent = '▶';
     ui.playText.textContent = frames.length ? (frameIndex >= frames.length - 1 ? 'Play again' : 'Resume') : 'Run simulation';
     setStatus(frames.length ? 'PAUSED' : 'READY', false);
   }
 
-  function tick() {
+  function tick(now) {
     if (!playing) return;
-    if (frameIndex >= frames.length - 1) {
-      stopPlayback(); setStatus('COMPLETE', false); ui.playText.textContent = 'Play again'; return;
+    if (lastPlaybackTime) {
+      playbackPosition += (now - lastPlaybackTime) / (DT * 1000) * Number(ui.speedSelect.value);
     }
-    frameIndex++;
-    updateFrame();
-    const delay = Math.max(20, DT * 1000 / Number(ui.speedSelect.value));
-    timer = window.setTimeout(tick, delay);
+    lastPlaybackTime = now;
+    const finalPosition = frames.length - 1;
+    if (playbackPosition >= finalPosition) playbackPosition = finalPosition;
+    frameIndex = Math.min(Math.floor(playbackPosition), finalPosition);
+    updateFrame(interpolateFrame(playbackPosition), playbackPosition);
+    if (playbackPosition >= finalPosition) {
+      playing = false; timer = 0; lastPlaybackTime = 0;
+      setStatus('COMPLETE', false); ui.playText.textContent = 'Play again';
+      return;
+    }
+    timer = window.requestAnimationFrame(tick);
   }
 
   function startPlayback() {
     if (!frames.length) buildRun();
-    if (frameIndex >= frames.length - 1) frameIndex = 0;
+    if (playbackPosition >= frames.length - 1) playbackPosition = 0;
     playing = true;
+    lastPlaybackTime = 0;
     ui.playIcon.textContent = 'Ⅱ'; ui.playText.textContent = 'Pause simulation';
     setStatus('IN MOTION', true);
-    updateFrame(); tick();
+    timer = window.requestAnimationFrame(tick);
   }
 
   function download(name, contents, mime) {
@@ -280,10 +342,16 @@
     stopPlayback(); buildRun(); frameIndex = 0; updateFrame(); setStatus('READY', false);
     ui.playText.textContent = 'Run simulation'; ui.playIcon.textContent = '▶';
   });
-  ui.scrubber.addEventListener('input', () => { if (!playing && frames.length) { frameIndex = Number(ui.scrubber.value); updateFrame(); } });
-  ui.speedSelect.addEventListener('change', () => { if (playing) { window.clearTimeout(timer); tick(); } });
+  ui.scrubber.addEventListener('input', () => {
+    if (!playing && frames.length) {
+      playbackPosition = Number(ui.scrubber.value);
+      frameIndex = Math.floor(playbackPosition);
+      updateFrame(interpolateFrame(playbackPosition), playbackPosition);
+    }
+  });
+  ui.speedSelect.addEventListener('change', () => { if (playing) lastPlaybackTime = 0; });
   ui.scenario.addEventListener('change', () => {
-    stopPlayback(); frames = []; frameIndex = 0;
+    stopPlayback(); frames = []; frameIndex = 0; playbackPosition = 0; displayFrame = null;
     const hints = {
       closure: 'Traffic queues behind a full restriction at 805 m.',
       partial: 'Flow through the road is reduced by 50% at 805 m.',
@@ -291,8 +359,9 @@
     };
     ui.hint.textContent = hints[ui.scenario.value];
     config = scenarioConfig(); ui.scrubber.disabled = true; ui.reset.disabled = true; ui.csv.disabled = true; ui.json.disabled = true;
+    displayFrame = snapshot(new Float64Array(CELL_COUNT).fill(0.02), 0, 0);
     ui.time.textContent = '00:00'; ui.density.innerHTML = '20.0 <small>PCU / km</small>'; ui.speed.innerHTML = '— <small>km / h</small>'; ui.mass.innerHTML = '20.0 <small>PCU</small>';
-    ui.progress.textContent = 'Ready when you are'; setStatus('READY', false); drawRoad();
+    ui.progress.textContent = 'Ready when you are'; setStatus('READY', false); drawRoad(displayFrame);
     ui.playText.textContent = 'Run simulation'; ui.playIcon.textContent = '▶';
   });
   ui.duration.addEventListener('change', () => {
