@@ -158,32 +158,31 @@ closing speed, then clamps the vehicles to touching; it does not model impact
 forces, damage, or crash risk.
 
 The desktop LWR engine remains separate and unchanged. The browser app at
-[`browser_app/index.html`](./browser_app/index.html) now runs only an
-individual-vehicle simulation; it does not run or compare against LWR. The
-browser model is an independent, simplified implementation, not a direct
-execution of the Python prototype. It supports seeded arrivals, vehicle
-classes, gap-checked lane changes, overtaking, one-lane restrictions, and full
-road closures. Its lane-change and driving rules are illustrative, not
-calibrated. Intersections and signals are not modeled; validate against
-observed traffic data before using it for research or engineering decisions.
+[`browser_app/index.html`](./browser_app/index.html) runs only the individual
+vehicle simulation; it does not run or compare against LWR. It supports seeded
+arrivals, several vehicle types, gap-checked lane changes, overtaking, one-lane
+restrictions, and full road closures. Its driving rules are illustrative, not
+calibrated. Intersections and signals are not modeled.
 
 Run its focused tests with `python -m unittest -v test_traffic_micro`. To
 open the Python visual preview, run `python traffic_micro_app.pyw`; it can
-regenerate seeded runs, play/pause, and scrub saved frames. To view individual
-vehicle classes and overtaking in a browser, open `browser_app/index.html`.
-Choose the road scenario, barrier distance, arrivals, speed limit, and run
-length in the settings panel. The browser run stops when the first vehicle
-reaches the 500 m road end, or at the selected run length if none reaches it
-first. During a barrier scenario, drag the barrier marker directly on the
-animated road or edit its distance in the settings; it moves live without
-resetting the run. Approaching vehicles stop safely ahead and can resume if it
-moves away. Vehicles have larger, clearer shapes that do not shrink when
-traffic gets close. Drivers look ahead for lane closures, attempt
-a merge when a safe gap is available, and wait rather than force an unsafe
-change. Vehicles accelerate normally when the moved barrier is well ahead and
-brake within a safe stopping distance. Lane changes are gradual. Runs can be
-downloaded as CSV or JSON; samples record the live barrier position. To inspect
-a reproducible scenario from Python:
+regenerate seeded runs, play/pause, and scrub saved frames. To view the browser
+simulation, open `browser_app/index.html` and choose the road scenario, barrier
+distance, arrival rate, speed limit, and run length. Vehicles exiting at the
+500 m downstream end are counted and removed; the run stops at its selected
+duration, or when a queue persistently blocks entry at the 0 m upstream end.
+During a barrier scenario, drag its marker on the road or edit its distance in
+the settings; the position changes live. Approaching vehicles stop safely and
+can resume if the barrier moves away. Drivers look at least 220 m ahead for
+lane closures and attempt to merge when there is a safe gap. Each physical lane is
+drawn with four marked paths; vehicles can move between paths only when their
+full width and length have room, with a clear front and rear gap. Passing
+requires a clear closing speed and useful gain; drivers wait before returning
+to their old lane. Only a vehicle behind slower traffic can request a pass; a
+leader does not brake or move aside for a follower. All vehicles update from
+the same traffic snapshot. Moves between paths take about 2.4 seconds. Runs
+can be downloaded as CSV or JSON, including samples of
+the barrier position. To inspect a reproducible Python run:
 
 ```python
 import traffic_micro
