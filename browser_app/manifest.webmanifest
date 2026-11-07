@@ -1,0 +1,10 @@
+{
+  "name": "Flowline Traffic Flow Studio",
+  "short_name": "Flowline",
+  "description": "Explore traffic flow and shockwaves in your browser.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#101a28",
+  "theme_color": "#101a28",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
