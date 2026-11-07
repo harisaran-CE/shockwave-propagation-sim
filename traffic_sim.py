@@ -80,6 +80,7 @@ class SimulationState:
     cell_edges_m: np.ndarray
     config: SimulationConfig = SimulationConfig()
     cumulative_inflow_vehicles: np.longdouble = np.longdouble(0)
+    inflow_demand_vehicles_per_s: np.longdouble | None = None
 
     @property
     def cell_widths_m(self) -> np.ndarray:
@@ -177,6 +178,7 @@ def initialize_state(config: SimulationConfig | None = None) -> SimulationState:
         density_vehicles_per_m=density,
         cell_edges_m=edges,
         config=config,
+        inflow_demand_vehicles_per_s=np.longdouble(str(config.inflow_demand_vehicles_per_s)),
     )
 
 
@@ -234,7 +236,10 @@ def _demand_supply(
     return demand, supply, capacity
 
 
-def _interface_fluxes(state: SimulationState) -> np.ndarray:
+def _interface_fluxes(
+    state: SimulationState,
+    inflow_demand_vehicles_per_s: float | np.longdouble | None = None,
+) -> np.ndarray:
     """Return all `n + 1` interface fluxes in vehicles per second."""
 
     config = state.config
@@ -244,7 +249,14 @@ def _interface_fluxes(state: SimulationState) -> np.ndarray:
     flux = np.empty(density.size + 1, dtype=np.longdouble)
 
     # Upstream boundary: prescribed demand entering an available first cell.
-    flux[0] = np.minimum(np.longdouble(str(config.inflow_demand_vehicles_per_s)), supply[0])
+    inflow_demand = np.longdouble(str(
+        config.inflow_demand_vehicles_per_s
+        if inflow_demand_vehicles_per_s is None
+        else inflow_demand_vehicles_per_s
+    ))
+    if not np.isfinite(inflow_demand) or inflow_demand < 0:
+        raise ValueError("Inflow demand must be finite and non-negative.")
+    flux[0] = np.minimum(inflow_demand, supply[0])
 
     # Interior Godunov flux: sending demand from the left, receiving supply on
     # the right. This is the conservative LWR Riemann-solver construction.
@@ -264,15 +276,23 @@ def _interface_fluxes(state: SimulationState) -> np.ndarray:
     return flux
 
 
-def advance_state(state: SimulationState) -> SimulationState:
+def advance_state(
+    state: SimulationState,
+    inflow_demand_vehicles_per_s: float | np.longdouble | None = None,
+) -> SimulationState:
     """Advance one conservative time step using the LWR finite-volume update."""
 
-    flux = _interface_fluxes(state)
+    flux = _interface_fluxes(state, inflow_demand_vehicles_per_s)
     config = state.config
     widths = state.cell_widths_m
     density = state.density_vehicles_per_m
     dt = np.longdouble(str(config.time_step_s))
     jam_density = np.longdouble(str(config.jam_density_vehicles_per_m))
+    inflow_demand = np.longdouble(str(
+        config.inflow_demand_vehicles_per_s
+        if inflow_demand_vehicles_per_s is None
+        else inflow_demand_vehicles_per_s
+    ))
     next_density = density - (dt / widths) * (flux[1:] - flux[:-1])
 
     if not np.all(np.isfinite(next_density)):
@@ -291,6 +311,7 @@ def advance_state(state: SimulationState) -> SimulationState:
         cell_edges_m=state.cell_edges_m,
         config=config,
         cumulative_inflow_vehicles=state.cumulative_inflow_vehicles + dt * flux[0],
+        inflow_demand_vehicles_per_s=inflow_demand,
     )
 
 

@@ -61,6 +61,10 @@
       </select>
       <div class="field-hint" id="scenarioHint">Traffic queues behind a full restriction at 805 m.</div>
 
+      <label class="field-label variability-label" for="inflowVariation">Inflow variability <span id="inflowVariationValue">±25%</span></label>
+      <input class="variability-slider" id="inflowVariation" type="range" min="0" max="50" step="5" value="25" aria-label="Inflow variability">
+      <div class="field-hint">Arrivals vary randomly each second around the selected average.</div>
+
       <label class="field-label duration-label" for="durationSelect">How long to simulate?</label>
       <select class="field-select" id="durationSelect">
         <option value="60">1 minute</option>
@@ -72,6 +76,7 @@
         <summary>What’s under the hood?</summary>
         <p>The road is a one-dimensional chain of 7 m cells. Vehicle density is updated every 0.25 seconds using a conservative LWR traffic-flow solver and a Greenshields speed–density relationship. Playback speed changes only how quickly the animation runs.</p>
         <p>The two lanes and car drawings help you read the traffic pattern; they are not individually simulated vehicles or a calibrated 2D model.</p>
+        <p>Inflow variability adds a seeded random demand change each second around the selected average. The seed is saved in exported runs so the sequence can be reproduced.</p>
       </details>
 
       <div class="download-area"><div class="section-kicker">TAKE YOUR RESULTS</div><p>Save the full run to explore or share.</p><div class="download-buttons"><button id="csvButton" class="download-button" type="button" disabled>↓ <span>Download CSV</span></button><button id="jsonButton" class="download-button" type="button" disabled>↓ <span>Download JSON</span></button></div></div>
