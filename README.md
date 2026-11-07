@@ -144,8 +144,12 @@ run [`build_windows.ps1`](./build_windows.ps1).
 vehicle-level prototype. It models seeded initial fleets of passenger cars,
 motorcycles, auto-rickshaws, buses, and heavy goods vehicles on a straight,
 fixed-lane road, with an Intelligent Driver Model (IDM) car-following update,
-sampled reaction delays, and reproducible hard-braking events. Brake-event
-rates and durations, vehicle proportions, and driver-parameter ranges are
+sampled reaction delays, reproducible hard-braking events, and conservative
+adjacent-lane changes for passing slower traffic when the speed gain and front
+and rear gaps satisfy the configured checks. Lane changes are applied at the
+start of a time step, with deterministic conflict resolution and a cooldown
+to limit repeated switching. Brake-event rates and durations, vehicle
+proportions, lane-change thresholds, and driver-parameter ranges are
 illustrative, not calibrated to a specific road or dataset.
 Reaction delay uses each driver's sampled perception history; hard braking is
 sampled from a seeded per-vehicle event rate and logged with its applied
@@ -153,17 +157,33 @@ duration. If a step would create overlap, the model records a contact and
 closing speed, then clamps the vehicles to touching; it does not model impact
 forces, damage, or crash risk.
 
-The prototype does not replace or change the LWR engine, and is not wired into
-the original applications. It does not yet model arrivals, intersections,
-lane changes, or overtaking. Braking and reaction-delay parameters are
-exploratory placeholders; calibrate and validate all behavior against observed
-traffic data before describing the model as research-calibrated.
+The desktop LWR engine remains separate and unchanged. The browser app at
+[`browser_app/index.html`](./browser_app/index.html) now runs only an
+individual-vehicle simulation; it does not run or compare against LWR. The
+browser model is an independent, simplified implementation, not a direct
+execution of the Python prototype. It supports seeded arrivals, vehicle
+classes, gap-checked lane changes, overtaking, one-lane restrictions, and full
+road closures. Its lane-change and driving rules are illustrative, not
+calibrated. Intersections and signals are not modeled; validate against
+observed traffic data before using it for research or engineering decisions.
 
 Run its focused tests with `python -m unittest -v test_traffic_micro`. To
-open the standalone visual preview, run `python traffic_micro_app.pyw`. The
-preview can regenerate seeded runs, play/pause, and scrub saved frames. It does
-not change the existing desktop or browser applications. To inspect a
-reproducible scenario from Python:
+open the Python visual preview, run `python traffic_micro_app.pyw`; it can
+regenerate seeded runs, play/pause, and scrub saved frames. To view individual
+vehicle classes and overtaking in a browser, open `browser_app/index.html`.
+Choose the road scenario, barrier distance, arrivals, speed limit, and run
+length in the settings panel. The browser run stops when the first vehicle
+reaches the 500 m road end, or at the selected run length if none reaches it
+first. During a barrier scenario, drag the barrier marker directly on the
+animated road or edit its distance in the settings; it moves live without
+resetting the run. Approaching vehicles stop safely ahead and can resume if it
+moves away. Vehicles have larger, clearer shapes that do not shrink when
+traffic gets close. Drivers look ahead for lane closures, attempt
+a merge when a safe gap is available, and wait rather than force an unsafe
+change. Vehicles accelerate normally when the moved barrier is well ahead and
+brake within a safe stopping distance. Lane changes are gradual. Runs can be
+downloaded as CSV or JSON; samples record the live barrier position. To inspect
+a reproducible scenario from Python:
 
 ```python
 import traffic_micro

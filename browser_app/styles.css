@@ -181,6 +181,21 @@ input {
   background: var(--blue-dark);
 }
 
+.model-switch {
+  display: block;
+  width: fit-content;
+  margin-top: 11px;
+  color: var(--blue-dark);
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.model-switch:hover {
+  color: var(--ink);
+}
+
 .workspace {
   grid-column: 1;
   grid-row: 2;

@@ -4,87 +4,138 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f3f5f2">
-  <meta name="description" content="A friendly, interactive traffic shockwave simulator powered by a conservative 1D LWR model.">
-  <title>Flowline — Traffic Flow Studio</title>
+  <meta name="description" content="Simulate individual cars, motorcycles, auto-rickshaws, buses and trucks, with lane changes and overtaking.">
+  <title>Flowline — Vehicle Traffic Studio</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="styles.css">
-  <script src="app.js" defer></script>
+  <link rel="stylesheet" href="microscopic.css">
+  <script src="microscopic.js" defer></script>
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="#top" aria-label="Flowline home"><span class="brand-mark" aria-hidden="true">↗</span><span>flowline</span></a>
-    <span class="top-note">TRAFFIC FLOW STUDIO <i></i> BROWSER EDITION</span>
+    <a class="brand" href="index.html" aria-label="Flowline vehicle traffic studio"><span class="brand-mark" aria-hidden="true">↗</span><span>flowline</span></a>
+    <span class="top-note">INDIVIDUAL VEHICLE SIMULATION <i></i> BROWSER EDITION</span>
   </header>
 
-  <main id="top" class="layout">
-    <section class="intro">
-      <div class="eyebrow"><span class="live-dot"></span> A little clarity in the traffic</div>
-      <h1>See the jam<br><em>move.</em></h1>
-      <p>Watch a traffic wave form, travel upstream, and ease away. Change the road conditions and explore what happens.</p>
-      <div class="model-tag"><span aria-hidden="true">⌁</span> 1D traffic physics <b>·</b> 2D road view</div>
-      <button class="intro-action" id="introRunButton" type="button">Run simulation <span aria-hidden="true">→</span></button>
+  <main class="micro-layout">
+    <section class="micro-intro">
+      <div class="eyebrow"><span class="live-dot"></span> VEHICLE TRAFFIC MODEL</div>
+      <h1>Cars, bikes, buses.<br><em>All on the road.</em></h1>
+      <p>Watch individual vehicles arrive, follow one another, and change lanes when there is room. Add a lane restriction or road closure to see how traffic responds.</p>
+      <div class="micro-badges"><span>INDIVIDUAL VEHICLES</span><span>GAP-CHECKED LANE CHANGES</span></div>
     </section>
 
-    <section class="workspace" aria-label="Traffic simulation">
+    <section class="micro-workspace" aria-label="Microscopic vehicle simulation">
       <div class="scene-head">
-        <div><div class="section-kicker">LIVE ROAD VIEW <span class="scene-status" id="sceneStatus">READY</span></div><h2>One road, one evolving story.</h2></div>
-        <div class="clock"><span class="clock-label">SIMULATED TIME</span><strong id="timeReadout">00:00</strong></div>
-      </div>
-      <div class="road-wrap">
-        <canvas id="roadCanvas" role="img" aria-label="Animated two-lane illustration of traffic density along a one-kilometre road"></canvas>
-        <div class="road-scale"><span>0 m <small>UPSTREAM</small></span><span class="road-key"><i class="key-car"></i> moving traffic <i class="key-jam"></i> restriction</span><span>1,000 m <small>DOWNSTREAM</small></span></div>
-      </div>
-
-      <div class="readouts" aria-live="polite">
-        <div><span>ROAD DENSITY</span><strong id="densityReadout">20 <small>PCU / km</small></strong></div>
-        <div><span>AVERAGE SPEED</span>        <strong id="speedReadout">68.8 <small>km / h</small></strong></div>
-        <div><span>TRAFFIC ON ROAD</span><strong id="massReadout">20.0 <small>PCU</small></strong></div>
+        <div>
+          <div class="section-kicker">LIVE VEHICLE VIEW <span class="scene-status" id="microStatus">READY</span></div>
+          <h2>Every marker is a vehicle</h2>
+        </div>
+        <div class="clock"><span class="clock-label">SIMULATED TIME</span><strong id="microTime">00:00</strong></div>
       </div>
 
-      <div class="timeline"><div class="timeline-labels"><span>RUN PROGRESS</span><span id="progressLabel">Ready when you are</span></div><input id="scrubber" aria-label="Simulation timeline" type="range" min="0" max="0" step="any" value="0" disabled></div>
+      <div class="micro-road-wrap">
+        <canvas id="microRoad" role="img" aria-label="Two-lane road showing individually simulated vehicles. Drag the barrier marker on the road to move it during the simulation."></canvas>
+      </div>
+      <div class="field-hint barrier-drag-hint">Drag the barrier itself on the road to move it while the simulation runs.</div>
+      <div class="micro-distance"><span>0 m <small>UPSTREAM</small></span><span>500 m <small>DOWNSTREAM</small></span></div>
 
-      <div class="transport">
-        <button class="primary-button" id="playButton" type="button"><span id="playIcon" aria-hidden="true">▶</span><span id="playText">Run simulation</span></button>
-        <button class="quiet-button" id="resetButton" type="button" disabled>Reset</button>
-        <label class="speed-control">Playback <select id="speedSelect" aria-label="Playback speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="3">3×</option></select></label>
+      <div class="micro-legend" aria-label="Vehicle types">
+        <span><i class="swatch car"></i>Cars <b id="carsCount">0</b></span>
+        <span><i class="swatch motorcycle"></i>Motorcycles <b id="motorcyclesCount">0</b></span>
+        <span><i class="swatch rickshaw"></i>Auto-rickshaws <b id="rickshawsCount">0</b></span>
+        <span><i class="swatch bus"></i>Buses <b id="busesCount">0</b></span>
+        <span><i class="swatch truck"></i>Trucks <b id="trucksCount">0</b></span>
+      </div>
+
+      <div class="micro-readouts" aria-live="polite">
+        <div><span>VEHICLES ON ROAD</span><strong id="microVehicleCount">0</strong></div>
+        <div><span>MEAN SPEED</span><strong id="microMeanSpeed">0 <small>km/h</small></strong></div>
+        <div><span>ROAD DENSITY</span><strong id="microDensity">0 <small>veh/km/lane</small></strong></div>
+        <div><span>EXITED VEHICLES</span><strong id="microExited">0</strong></div>
+        <div><span>QUEUED AT BARRIER</span><strong id="microQueue">0</strong></div>
+        <div><span>COMPLETED OVERTAKES</span><strong id="microOvertakes">0</strong></div>
+        <div><span>LANE CHANGES</span><strong id="microLaneChanges">0</strong></div>
+        <div><span>CONTACTS PREVENTED</span><strong id="microContacts">0</strong></div>
+      </div>
+
+      <div class="micro-event" id="microEvent" aria-live="polite">Vehicles are ready. Press Play to watch them move and pass.</div>
+      <div class="micro-controls">
+        <button class="primary-button" id="microPlay" type="button"><span id="microPlayIcon" aria-hidden="true">▶</span><span id="microPlayText">Play</span></button>
+        <button class="quiet-button" id="microReset" type="button">Reset run</button>
+        <label class="speed-control">Playback
+          <select id="microSpeed" aria-label="Playback speed">
+            <option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
+          </select>
+        </label>
+        <button class="download-button" id="microCsv" type="button">↓ <span>Download CSV</span></button>
+        <button class="download-button" id="microJson" type="button">↓ <span>Download JSON</span></button>
       </div>
     </section>
 
-    <aside class="controls" aria-label="Simulation settings">
-      <div class="controls-heading"><div><div class="section-kicker">MAKE IT YOURS</div><h2>Set the scene</h2></div></div>
-      <p class="controls-intro">A couple of small changes can make a big difference.</p>
-      <label class="field-label" for="scenarioSelect">Road situation</label>
-      <select class="field-select" id="scenarioSelect">
-        <option value="closure">Road fully blocked</option>
-        <option value="partial">One lane restricted</option>
-        <option value="busy">Busy road, no blockage</option>
+    <aside class="micro-notes" aria-label="Simulation settings and model information">
+      <div class="section-kicker">SIMULATION SETTINGS</div>
+      <h2>Set the road conditions</h2>
+      <p class="settings-intro">Most settings reset the run. Barrier distance can move live.</p>
+
+      <label class="field-label" for="microScenario">Road situation</label>
+      <select class="field-select" id="microScenario">
+        <option value="busy" selected>Normal traffic</option>
+        <option value="partial">One lane closed</option>
+        <option value="closure">Road fully closed</option>
       </select>
-      <div class="field-hint" id="scenarioHint">Traffic queues behind a full restriction at 805 m.</div>
+      <div class="field-hint" id="microScenarioHint">No barrier; vehicles use both lanes.</div>
 
-      <label class="field-label variability-label" for="inflowVariation">Inflow variability <span id="inflowVariationValue">±25%</span></label>
-      <input class="variability-slider" id="inflowVariation" type="range" min="0" max="50" step="5" value="25" aria-label="Inflow variability">
-      <div class="field-hint">Arrivals vary randomly each second around the selected average.</div>
+      <div class="conditional-setting" id="microLaneSetting">
+        <label class="field-label" for="microClosedLane">Lane to close</label>
+        <select class="field-select" id="microClosedLane">
+          <option value="0">Lane 1</option>
+          <option value="1" selected>Lane 2</option>
+        </select>
+      </div>
 
-      <label class="field-label duration-label" for="durationSelect">How long to simulate?</label>
-      <select class="field-select" id="durationSelect">
+      <label class="field-label" for="microBarrierPosition">Barrier distance from start (m)</label>
+      <input class="field-select" id="microBarrierPosition" type="number" min="50" max="450" step="1" value="320" aria-label="Barrier distance from start in metres">
+
+      <label class="field-label" for="microArrivalRate">Average arrivals</label>
+      <select class="field-select" id="microArrivalRate">
+        <option value="12">12 vehicles / minute</option>
+        <option value="24" selected>24 vehicles / minute</option>
+        <option value="36">36 vehicles / minute</option>
+        <option value="48">48 vehicles / minute</option>
+      </select>
+
+      <label class="field-label variability-label" for="microVariation">Arrival variation <span id="microVariationValue">±25%</span></label>
+      <input class="variability-slider" id="microVariation" type="range" min="0" max="50" step="5" value="25" aria-label="Arrival variation">
+      <div class="field-hint">Changes the time between new vehicles.</div>
+
+      <label class="field-label" for="microSpeedLimit">Speed limit</label>
+      <select class="field-select" id="microSpeedLimit">
+        <option value="40">40 km/h</option>
+        <option value="60" selected>60 km/h</option>
+        <option value="80">80 km/h</option>
+        <option value="100">100 km/h</option>
+      </select>
+
+      <label class="field-label duration-label" for="microDuration">Maximum simulation time</label>
+      <select class="field-select" id="microDuration">
         <option value="60">1 minute</option>
         <option value="180" selected>3 minutes</option>
         <option value="300">5 minutes</option>
       </select>
 
       <details class="physics-details">
-        <summary>What’s under the hood?</summary>
-        <p>The road is a one-dimensional chain of 7 m cells. Vehicle density is updated every 0.25 seconds using a conservative LWR traffic-flow solver and a Greenshields speed–density relationship. Playback speed changes only how quickly the animation runs.</p>
-        <p>The two lanes and car drawings help you read the traffic pattern; they are not individually simulated vehicles or a calibrated 2D model.</p>
-        <p>Inflow variability adds a seeded random demand change each second around the selected average. The seed is saved in exported runs so the sequence can be reproduced.</p>
+        <summary>How this model works</summary>
+        <p>Each car, motorcycle, auto-rickshaw, bus, and truck is simulated separately. Drivers look ahead for a lane closure and try to merge when front and rear gaps are safe; they wait rather than force an unsafe merge. Lane changes move gradually rather than snapping between lanes.</p>
+        <p>A lane closure acts as a stopped obstacle in that lane. A full closure blocks both lanes. Vehicles slow down and queue; lane changes can move them around a single-lane restriction when there is room.</p>
+        <p>Drag the barrier marker directly on the animated road, or edit its distance. Moving it does not reset the run; vehicles already past it keep moving. Vehicles accelerate normally when the barrier is well ahead, then brake within a safe stopping distance. Vehicle lengths keep the road scale, with clearer, larger shapes that do not shrink when traffic gets close.</p>
+        <p>Readouts include mean speed in km/h, density in vehicles per kilometre per lane, exiting and queued vehicle counts, overtakes, and lane changes. Contact prevention is reported separately from barrier queues.</p>
+        <p>The road ends at the 500 m reference marker. The simulation stops when the first vehicle reaches that end, or at the selected run length if it has not reached it.</p>
+        <p>These are simplified, uncalibrated driving rules. Results are for exploration, not road-safety or engineering decisions.</p>
       </details>
-
-      <div class="download-area"><div class="section-kicker">TAKE YOUR RESULTS</div><p>Save the full run to explore or share.</p><div class="download-buttons"><button id="csvButton" class="download-button" type="button" disabled>↓ <span>Download CSV</span></button><button id="jsonButton" class="download-button" type="button" disabled>↓ <span>Download JSON</span></button></div></div>
     </aside>
 
-    <footer class="footnote"><span><i class="foot-dot"></i> No accounts, downloads, or data sent anywhere.</span><span>Built for exploring, not traffic engineering decisions.</span></footer>
+    <footer class="footnote"><span><i class="foot-dot"></i> Runs locally in your browser.</span><span>Vehicle counts and speeds are illustrative, not calibrated.</span></footer>
   </main>
-  <noscript>This browser app needs JavaScript enabled to run the simulation.</noscript>
 </body>
 </html>
