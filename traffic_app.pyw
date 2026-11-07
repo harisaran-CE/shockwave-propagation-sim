@@ -100,7 +100,7 @@ class FlowlineApp(tk.Tk):
     @staticmethod
     def _label(
         parent: tk.Widget,
-        text: str,
+        text: str = "",
         *,
         font: tuple[object, ...] = ("Segoe UI", 10),
         color: str = COLORS["ink"],
