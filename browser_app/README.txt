@@ -14,9 +14,16 @@ change lanes if there is enough room. While a barrier scenario is running,
 drag the barrier marker directly on the animated road, or edit the distance
 field, to move it without restarting the simulation. Vehicles already past the
 barrier continue; vehicles approaching it stop safely ahead and can resume when
-it moves away. Drivers look ahead for a closure and attempt a lane change only
-when the front and rear gaps are safe; if no gap is available, they wait rather
-than force a merge. Lane changes take longer and move smoothly. Vehicles
+it moves away. Drivers look at least 220 m ahead for a closure and attempt a lane change when
+the front and rear gaps are safe; if no gap is available, they wait rather
+than force a merge. Only a vehicle behind slower traffic can request a pass; the
+leader never brakes or moves aside to make room for a follower. Each physical
+lane has four marked paths, and vehicles move between path positions gradually.
+The paths do not let vehicles overlap: a move is rejected unless the vehicle's
+full width and length fit with a clear front and rear gap. Vehicles follow a
+fixed traffic snapshot each step and brake for traffic ahead to maintain a gap
+when possible. Drivers wait before returning to their old lane. Moves between
+paths take about 2.4 seconds.
 accelerate normally when a moved barrier is far enough ahead, and brake only
 when it is within a safe stopping distance. Vehicles have larger, clearer
 shapes, and their apparent lengths do not shrink when traffic gets close. Use
@@ -31,9 +38,10 @@ The simulation uses simplified vehicle-following and lane-change rules,
 including anticipatory closure merging and gradual lateral movement. These
 rules are illustrative and are not calibrated for safety or engineering use.
 Intersections, traffic signals, and turns are not modeled. Playback speed
-changes only how quickly the animation runs. The simulation stops when the
-first vehicle reaches the 500 m road end, or at the selected run length if no
-vehicle reaches it first.
+changes only how quickly the animation runs. Vehicles that reach the 500 m
+downstream end exit and are counted without stopping the run. It stops at the
+selected run length, or when congestion persistently blocks new vehicles from
+entering at the 0 m upstream end.
 
 The browser app uses only the individual-vehicle model. The desktop LWR solver
 is separate and unchanged; the browser does not run LWR or compare model

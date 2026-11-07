@@ -21,7 +21,7 @@
     <section class="micro-intro">
       <div class="eyebrow"><span class="live-dot"></span> VEHICLE TRAFFIC MODEL</div>
       <h1>Cars, bikes, buses.<br><em>All on the road.</em></h1>
-      <p>Watch individual vehicles arrive, follow one another, and change lanes when there is room. Add a lane restriction or road closure to see how traffic responds.</p>
+      <p>Watch individual vehicles arrive, follow one another, and change lanes when there is room. Each road lane has four marked paths; add a lane restriction or road closure to see how traffic responds.</p>
       <div class="micro-badges"><span>INDIVIDUAL VEHICLES</span><span>GAP-CHECKED LANE CHANGES</span></div>
     </section>
 
@@ -35,7 +35,7 @@
       </div>
 
       <div class="micro-road-wrap">
-        <canvas id="microRoad" role="img" aria-label="Two-lane road showing individually simulated vehicles. Drag the barrier marker on the road to move it during the simulation."></canvas>
+        <canvas id="microRoad" role="img" aria-label="Two-lane road with four marked paths in each lane, showing individually simulated vehicles. Drag the barrier marker on the road to move it during the simulation."></canvas>
       </div>
       <div class="field-hint barrier-drag-hint">Drag the barrier itself on the road to move it while the simulation runs.</div>
       <div class="micro-distance"><span>0 m <small>UPSTREAM</small></span><span>500 m <small>DOWNSTREAM</small></span></div>
@@ -102,7 +102,6 @@
         <option value="12">12 vehicles / minute</option>
         <option value="24" selected>24 vehicles / minute</option>
         <option value="36">36 vehicles / minute</option>
-        <option value="48">48 vehicles / minute</option>
       </select>
 
       <label class="field-label variability-label" for="microVariation">Arrival variation <span id="microVariationValue">±25%</span></label>
@@ -126,11 +125,11 @@
 
       <details class="physics-details">
         <summary>How this model works</summary>
-        <p>Each car, motorcycle, auto-rickshaw, bus, and truck is simulated separately. Drivers look ahead for a lane closure and try to merge when front and rear gaps are safe; they wait rather than force an unsafe merge. Lane changes move gradually rather than snapping between lanes.</p>
+        <p>Each car, motorcycle, auto-rickshaw, bus, and truck is simulated separately. Each physical lane has four marked paths for choosing where to travel; vehicles still need enough room for their actual width and length, so a marked path is not a promise that a vehicle can fit beside another one. Moves between paths take about 2.4 seconds and are checked for a clear route. Every vehicle follows the same snapshot of traffic each step, then advances. A leader never brakes, changes lane, or moves backward just to make room for a follower; only a vehicle behind slower traffic can request a pass. Drivers brake for traffic ahead and keep a gap when they can. They look at least 220 m ahead for a lane closure and merge sooner when front and rear gaps are safe; they wait rather than force an unsafe merge. A driver must be closing on slower traffic to pass and waits before returning to the old lane.</p>
         <p>A lane closure acts as a stopped obstacle in that lane. A full closure blocks both lanes. Vehicles slow down and queue; lane changes can move them around a single-lane restriction when there is room.</p>
         <p>Drag the barrier marker directly on the animated road, or edit its distance. Moving it does not reset the run; vehicles already past it keep moving. Vehicles accelerate normally when the barrier is well ahead, then brake within a safe stopping distance. Vehicle lengths keep the road scale, with clearer, larger shapes that do not shrink when traffic gets close.</p>
         <p>Readouts include mean speed in km/h, density in vehicles per kilometre per lane, exiting and queued vehicle counts, overtakes, and lane changes. Contact prevention is reported separately from barrier queues.</p>
-        <p>The road ends at the 500 m reference marker. The simulation stops when the first vehicle reaches that end, or at the selected run length if it has not reached it.</p>
+        <p>Vehicles reaching the 500 m downstream end are counted as exited and do not stop the simulation. The run stops at its selected time, or when congestion keeps new vehicles from entering at the 0 m upstream end.</p>
         <p>These are simplified, uncalibrated driving rules. Results are for exploration, not road-safety or engineering decisions.</p>
       </details>
     </aside>
