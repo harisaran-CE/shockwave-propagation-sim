@@ -193,7 +193,7 @@
       for (let i = 0; i < CELL_COUNT; i++) {
         const k = frame.density[i];
         if (k <= 0.026) continue;
-        const intensity = Math.min(0.48, (k - 0.026) / (JAM_DENSITY - 0.026) * 0.48);
+        const intensity = Math.min(0.36, (k - 0.026) / (JAM_DENSITY - 0.026) * 0.36);
         ctx.fillStyle = `rgba(240,181,111,${intensity})`;
         ctx.fillRect(edges[i], 52, widths[i] + 1, 112);
       }
@@ -287,14 +287,15 @@
     for (const marker of positionedMarkers) {
       const y = marker.lane === 0 ? 79 : 133;
       const speedFraction = Math.max(0.04, 1 - marker.density / JAM_DENSITY);
-      const tint = speedFraction < .28 ? '#f1b778' : (speedFraction < .58 ? '#9bd8ba' : '#88dfe0');
+      const tint = speedFraction < .28 ? '#f5f1dc' : (speedFraction < .58 ? '#9bd8ba' : '#88dfe0');
       ctx.save();
       ctx.shadowColor = `${tint}55`; ctx.shadowBlur = 2;
-      ctx.fillStyle = tint; roundedRect(ctx, marker.x - 6, y - 5, 12, 10, 3); ctx.fill();
+      ctx.fillStyle = tint; roundedRect(ctx, marker.x - 7, y - 5.5, 14, 11, 3); ctx.fill();
+      ctx.strokeStyle = '#13212b'; ctx.lineWidth = 1.5; ctx.stroke();
       ctx.shadowBlur = 0; ctx.fillStyle = '#21313b';
       roundedRect(ctx, marker.x - 2.5, y - 3.5, 5, 7, 2); ctx.fill();
-      ctx.fillStyle = '#263744'; ctx.fillRect(marker.x - 4, y - 6, 3, 1.5); ctx.fillRect(marker.x + 1, y - 6, 3, 1.5);
-      ctx.fillRect(marker.x - 4, y + 4.5, 3, 1.5); ctx.fillRect(marker.x + 1, y + 4.5, 3, 1.5);
+      ctx.fillStyle = '#263744'; ctx.fillRect(marker.x - 5, y - 6, 3, 1.5); ctx.fillRect(marker.x + 2, y - 6, 3, 1.5);
+      ctx.fillRect(marker.x - 5, y + 4.5, 3, 1.5); ctx.fillRect(marker.x + 2, y + 4.5, 3, 1.5);
       ctx.restore();
     }
   }
