@@ -236,6 +236,7 @@
     }
     const restrictionIndex = Math.min(Math.round(config.position / CELL_SIZE), CELL_COUNT - 1);
     const massBeforeRestriction = restrictionIndex > 0 ? cumulativeMass[restrictionIndex - 1] : 0;
+    const positionedMarkers = [];
 
     for (const marker of markers) {
       const target = marker.rank;
@@ -255,17 +256,26 @@
           : Math.max(roadX, config.position + 16);
       }
       roadX = Math.max(11, Math.min(989, roadX));
-      const y = marker.id % 2 === 0 ? 79 : 133;
-      const localCell = Math.min(CELL_COUNT - 1, cell);
-      const speedFraction = Math.max(0.04, 1 - frame.density[localCell] / JAM_DENSITY);
+      positionedMarkers.push({ x: roadX, lane: marker.id % 2, density, id: marker.id });
+    }
+
+    // Density is continuous, so tightly packed mass ranks can map to the
+    // same screen pixels. Keep a stable subset with visible car-sized gaps.
+    positionedMarkers.sort((a, b) => a.x - b.x || a.lane - b.lane);
+    const lastCarXByLane = [-Infinity, -Infinity];
+    for (const marker of positionedMarkers) {
+      if (marker.x - lastCarXByLane[marker.lane] < 21) continue;
+      lastCarXByLane[marker.lane] = marker.x;
+      const y = marker.lane === 0 ? 79 : 133;
+      const speedFraction = Math.max(0.04, 1 - marker.density / JAM_DENSITY);
       const tint = speedFraction < .28 ? '#f1b778' : (speedFraction < .58 ? '#9bd8ba' : '#88dfe0');
       ctx.save();
       ctx.shadowColor = `${tint}55`; ctx.shadowBlur = 7;
-      ctx.fillStyle = tint; roundedRect(ctx, roadX - 9, y - 7, 18, 13, 5); ctx.fill();
+      ctx.fillStyle = tint; roundedRect(ctx, marker.x - 9, y - 7, 18, 13, 5); ctx.fill();
       ctx.shadowBlur = 0; ctx.fillStyle = '#21313b';
-      roundedRect(ctx, roadX - 3.5, y - 5, 8, 9, 3); ctx.fill();
-      ctx.fillStyle = '#263744'; ctx.fillRect(roadX - 6, y - 8, 4, 2); ctx.fillRect(roadX + 3, y - 8, 4, 2);
-      ctx.fillRect(roadX - 6, y + 6, 4, 2); ctx.fillRect(roadX + 3, y + 6, 4, 2);
+      roundedRect(ctx, marker.x - 3.5, y - 5, 8, 9, 3); ctx.fill();
+      ctx.fillStyle = '#263744'; ctx.fillRect(marker.x - 6, y - 8, 4, 2); ctx.fillRect(marker.x + 3, y - 8, 4, 2);
+      ctx.fillRect(marker.x - 6, y + 6, 4, 2); ctx.fillRect(marker.x + 3, y + 6, 4, 2);
       ctx.restore();
     }
   }
