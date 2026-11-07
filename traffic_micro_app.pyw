@@ -54,7 +54,7 @@ class MicroscopicPreview(tk.Tk):
         self.playing = False
         self.after_id: str | None = None
         self._updating_timeline = False
-        self.seed_var = tk.StringVar(value="9")
+        self.seed_var = tk.StringVar(value="41")
         self.duration_var = tk.StringVar(value="30 s")
         self.time_var = tk.StringVar(value="0.0 s")
         self.count_var = tk.StringVar(value="—")
@@ -62,6 +62,7 @@ class MicroscopicPreview(tk.Tk):
         self.exited_var = tk.StringVar(value="0")
         self.braking_var = tk.StringVar(value="0")
         self.contacts_var = tk.StringVar(value="0")
+        self.lane_changes_var = tk.StringVar(value="0")
         self.status_var = tk.StringVar(value="Choose a seed and run the preview.")
         self._build_layout()
         self._generate_run()
@@ -151,7 +152,7 @@ class MicroscopicPreview(tk.Tk):
 
         metrics = tk.Frame(panel, bg=COLORS["surface"])
         metrics.grid(row=3, column=0, sticky="ew", padx=18, pady=(10, 14))
-        for column in range(6):
+        for column in range(7):
             metrics.grid_columnconfigure(column, weight=1, uniform="metric")
         self._metric(metrics, 0, "SIMULATION TIME", self.time_var, "s")
         self._metric(metrics, 1, "VEHICLES ON ROAD", self.count_var, "")
@@ -159,6 +160,7 @@ class MicroscopicPreview(tk.Tk):
         self._metric(metrics, 3, "VEHICLES EXITED", self.exited_var, "")
         self._metric(metrics, 4, "HARD-BRAKING EVENTS", self.braking_var, "")
         self._metric(metrics, 5, "CONTACTS", self.contacts_var, "")
+        self._metric(metrics, 6, "LANE CHANGES", self.lane_changes_var, "")
 
         playback = tk.Frame(content, bg=COLORS["page"])
         playback.grid(row=2, column=0, sticky="ew", pady=(14, 0))
@@ -177,7 +179,7 @@ class MicroscopicPreview(tk.Tk):
 
         note = tk.Label(
             content,
-            text="Prototype only: vehicle mix, reaction delays, and braking are uncalibrated. Contacts report closing speed only, not damage or crash risk; lane changes, overtaking, signals, and arrivals are not modeled.",
+            text="Prototype only: lane changes use simplified gap and speed-gain checks; overtaking is limited to adjacent lanes. Vehicle mix, reaction delays, and braking are uncalibrated. Contacts report closing speed only, not damage or crash risk; signals and arrivals are not modeled.",
             font=("Segoe UI", 9), fg=COLORS["muted"], bg=COLORS["page"], anchor="w",
         )
         note.grid(row=3, column=0, sticky="ew", pady=(12, 0))
@@ -260,6 +262,7 @@ class MicroscopicPreview(tk.Tk):
         self.exited_var.set(str(metrics.exited_vehicles))
         self.braking_var.set(str(metrics.hard_braking_event_count))
         self.contacts_var.set(str(metrics.contact_event_count))
+        self.lane_changes_var.set(str(metrics.lane_change_count))
         self._updating_timeline = True
         self.timeline.set(self.current_index)
         self._updating_timeline = False

@@ -2,8 +2,8 @@
 
 The default vehicle mix, driver ranges, and hard-braking event rate are
 illustrative, not calibrated to a particular urban arterial. The model
-currently supports straight multilane following, reaction delay, and
-reproducible hard-braking events; lane changes are not yet modeled.
+supports straight multilane following, reaction delay, reproducible
+hard-braking events, and conservative gap-based lane changes.
 An integration-step contact guard prevents geometric overlap and records
 closing speed, but does not model collision forces, damage, or crash risk.
 """
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import math
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 
 
@@ -81,6 +81,9 @@ class RoadConfig:
     class_mix: tuple[tuple[VehicleClass, float], ...] = _DEFAULT_CLASS_MIX
     hard_braking_rate_per_vehicle_s: float = 0.0015
     hard_braking_duration_s: tuple[float, float] = (0.5, 1.2)
+    lane_change_min_gain_m_per_s2: float = 0.35
+    lane_change_cooldown_s: float = 2.0
+    lane_change_max_safe_deceleration_m_per_s2: float = 3.0
 
     def __post_init__(self) -> None:
         values = (
@@ -88,6 +91,9 @@ class RoadConfig:
             self.speed_limit_m_per_s,
             self.time_step_s,
             self.hard_braking_rate_per_vehicle_s,
+            self.lane_change_min_gain_m_per_s2,
+            self.lane_change_cooldown_s,
+            self.lane_change_max_safe_deceleration_m_per_s2,
         )
         if not all(math.isfinite(value) for value in values):
             raise ValueError("Physical settings, event rate, and time-step values must be finite.")
@@ -101,6 +107,12 @@ class RoadConfig:
             raise ValueError("Time step must be in (0, 0.25] seconds.")
         if self.hard_braking_rate_per_vehicle_s < 0:
             raise ValueError("Hard-braking event rate must be non-negative.")
+        if self.lane_change_min_gain_m_per_s2 < 0:
+            raise ValueError("Minimum lane-change gain must be non-negative.")
+        if self.lane_change_cooldown_s < 0:
+            raise ValueError("Lane-change cooldown must be non-negative.")
+        if self.lane_change_max_safe_deceleration_m_per_s2 <= 0:
+            raise ValueError("Maximum safe lane-change deceleration must be positive.")
         if (
             len(self.hard_braking_duration_s) != 2
             or not all(math.isfinite(value) for value in self.hard_braking_duration_s)
@@ -152,6 +164,7 @@ class Vehicle:
     reaction_time_s: float = 0.8
     emergency_deceleration_m_per_s2: float = 6.0
     hard_braking_steps_remaining: int = 0
+    lane_change_cooldown_steps_remaining: int = 0
     acceleration_m_per_s2: float = 0.0
 
 
@@ -168,6 +181,7 @@ class SimulationState:
     perception_history: tuple[tuple[Vehicle, ...], ...] = ()
     hard_braking_events: tuple[HardBrakingEvent, ...] = ()
     contact_events: tuple[VehicleContactEvent, ...] = ()
+    lane_change_events: tuple[LaneChangeEvent, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,6 +205,17 @@ class VehicleContactEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class LaneChangeEvent:
+    """A lane change accepted after checking the target lane's available gaps."""
+
+    time_s: float
+    vehicle_id: int
+    from_lane: int
+    to_lane: int
+    acceleration_gain_m_per_s2: float
+
+
+@dataclass(frozen=True, slots=True)
 class SimulationMetrics:
     time_s: float
     vehicle_count: int
@@ -200,6 +225,7 @@ class SimulationMetrics:
     exited_vehicles: int
     hard_braking_event_count: int
     contact_event_count: int
+    lane_change_count: int
 
 
 def _sample_range(rng: random.Random, limits: tuple[float, float]) -> float:
@@ -305,15 +331,153 @@ def _idm_acceleration(
     return max(-vehicle.comfortable_deceleration_m_per_s2, min(vehicle.max_acceleration_m_per_s2, acceleration))
 
 
+def _lane_neighbors(
+    vehicles: list[Vehicle],
+    lane_index: int,
+    position_m: float,
+) -> tuple[Vehicle | None, Vehicle | None]:
+    """Return the nearest leader and follower around a position in one lane."""
+
+    ahead = [vehicle for vehicle in vehicles if vehicle.lane_index == lane_index and vehicle.position_m > position_m]
+    behind = [vehicle for vehicle in vehicles if vehicle.lane_index == lane_index and vehicle.position_m < position_m]
+    leader = min(ahead, key=lambda vehicle: vehicle.position_m, default=None)
+    follower = max(behind, key=lambda vehicle: vehicle.position_m, default=None)
+    return leader, follower
+
+
+def _lane_change_gaps_are_safe(
+    vehicle: Vehicle,
+    leader: Vehicle | None,
+    follower: Vehicle | None,
+    config: RoadConfig,
+) -> bool:
+    if leader is not None:
+        front_gap = (
+            leader.position_m - leader.length_m / 2 - vehicle.position_m - vehicle.length_m / 2
+        )
+        if front_gap < vehicle.minimum_gap_m + vehicle.speed_m_per_s * vehicle.desired_headway_s:
+            return False
+    if follower is not None:
+        rear_gap = (
+            vehicle.position_m - vehicle.length_m / 2 - follower.position_m - follower.length_m / 2
+        )
+        closing_speed = max(0.0, follower.speed_m_per_s - vehicle.speed_m_per_s)
+        minimum_rear_gap = (
+            follower.minimum_gap_m
+            + follower.speed_m_per_s * follower.desired_headway_s
+            + follower.speed_m_per_s * follower.reaction_time_s
+            + closing_speed**2 / (2.0 * follower.comfortable_deceleration_m_per_s2)
+        )
+        if rear_gap < minimum_rear_gap:
+            return False
+        after_merge = _idm_acceleration(
+            follower,
+            vehicle,
+            config.speed_limit_m_per_s,
+            perceived_gap_m=rear_gap,
+        )
+        if after_merge < -config.lane_change_max_safe_deceleration_m_per_s2:
+            return False
+    return True
+
+
+def _lane_change_proposals(state: SimulationState) -> dict[int, tuple[int, float]]:
+    """Choose adjacent lanes only when the ego gain and both gaps are acceptable."""
+
+    config = state.config
+    if config.lane_count < 2:
+        return {}
+    vehicles = list(state.vehicles)
+    by_id = {vehicle.vehicle_id: vehicle for vehicle in vehicles}
+    proposals: dict[int, tuple[int, float]] = {}
+    for vehicle in vehicles:
+        if vehicle.lane_change_cooldown_steps_remaining > 0:
+            continue
+        current_leader, _ = _lane_neighbors(vehicles, vehicle.lane_index, vehicle.position_m)
+        current_acceleration = _idm_acceleration(vehicle, current_leader, config.speed_limit_m_per_s)
+        best: tuple[int, float] | None = None
+        for target_lane in (vehicle.lane_index - 1, vehicle.lane_index + 1):
+            if not 0 <= target_lane < config.lane_count:
+                continue
+            target_leader, target_follower = _lane_neighbors(vehicles, target_lane, vehicle.position_m)
+            if not _lane_change_gaps_are_safe(vehicle, target_leader, target_follower, config):
+                continue
+
+            target_acceleration = _idm_acceleration(vehicle, target_leader, config.speed_limit_m_per_s)
+            gain = target_acceleration - current_acceleration
+            if gain < config.lane_change_min_gain_m_per_s2:
+                continue
+            if best is None or gain > best[1]:
+                best = (target_lane, gain)
+        if best is not None:
+            proposals[vehicle.vehicle_id] = best
+
+    # Resolve simultaneous requests deterministically; a lane cannot accept
+    # overlapping vehicles even when each independently saw a safe gap.
+    lane_assignments = {vehicle.vehicle_id: vehicle.lane_index for vehicle in vehicles}
+    accepted: dict[int, tuple[int, float]] = {}
+    ordered_proposals = sorted(
+        proposals.items(),
+        key=lambda item: (-item[1][1], item[0]),
+    )
+    for vehicle_id, (target_lane, gain) in ordered_proposals:
+        vehicle = by_id[vehicle_id]
+        occupants = [
+            other for other in vehicles
+            if lane_assignments[other.vehicle_id] == target_lane and other.vehicle_id != vehicle_id
+        ]
+        if any(
+            abs(other.position_m - vehicle.position_m) < (other.length_m + vehicle.length_m) / 2
+            for other in occupants
+        ):
+            continue
+        leader = min(
+            (other for other in occupants if other.position_m > vehicle.position_m),
+            key=lambda other: other.position_m,
+            default=None,
+        )
+        follower = max(
+            (other for other in occupants if other.position_m < vehicle.position_m),
+            key=lambda other: other.position_m,
+            default=None,
+        )
+        if not _lane_change_gaps_are_safe(vehicle, leader, follower, config):
+            continue
+        lane_assignments[vehicle_id] = target_lane
+        accepted[vehicle_id] = (target_lane, gain)
+    return accepted
+
+
 def advance_state(state: SimulationState) -> SimulationState:
-    """Advance one step using delayed perception and seeded braking events."""
+    """Advance one step using gap-checked lane changes and delayed perception."""
 
     config = state.config
     state_history = state.perception_history or (state.vehicles,)
-    lane_vehicles: dict[int, list[Vehicle]] = {lane: [] for lane in range(config.lane_count)}
+    original_by_id = {vehicle.vehicle_id: vehicle for vehicle in state.vehicles}
     for vehicle in state.vehicles:
         if not 0 <= vehicle.lane_index < config.lane_count:
             raise ValueError(f"Vehicle {vehicle.vehicle_id} has an invalid lane index.")
+    lane_change_proposals = _lane_change_proposals(state)
+    lane_change_events = list(state.lane_change_events)
+    vehicles_for_step = tuple(
+        replace(
+            vehicle,
+            lane_index=lane_change_proposals.get(vehicle.vehicle_id, (vehicle.lane_index, 0.0))[0],
+        )
+        for vehicle in state.vehicles
+    )
+    for vehicle_id, (target_lane, gain) in lane_change_proposals.items():
+        lane_change_events.append(
+            LaneChangeEvent(
+                time_s=round(state.time_s, 12),
+                vehicle_id=vehicle_id,
+                from_lane=original_by_id[vehicle_id].lane_index,
+                to_lane=target_lane,
+                acceleration_gain_m_per_s2=gain,
+            )
+        )
+    lane_vehicles: dict[int, list[Vehicle]] = {lane: [] for lane in range(config.lane_count)}
+    for vehicle in vehicles_for_step:
         lane_vehicles[vehicle.lane_index].append(vehicle)
 
     updated: list[Vehicle] = []
@@ -330,8 +494,13 @@ def advance_state(state: SimulationState) -> SimulationState:
         for index, vehicle in enumerate(ordered):
             delay_steps = math.ceil(vehicle.reaction_time_s / dt)
             history_index = max(0, len(state_history) - 1 - delay_steps)
+            changed_lane = vehicle.vehicle_id in lane_change_proposals
             perceived_vehicles = sorted(
-                (item for item in state_history[history_index] if item.lane_index == lane_index),
+                (
+                    item
+                    for item in (vehicles_for_step if changed_lane else state_history[history_index])
+                    if item.lane_index == lane_index
+                ),
                 key=lambda item: item.position_m,
                 reverse=True,
             )
@@ -368,6 +537,9 @@ def advance_state(state: SimulationState) -> SimulationState:
             )
 
             braking_steps = max(0, vehicle.hard_braking_steps_remaining - 1)
+            lane_change_cooldown = max(0, vehicle.lane_change_cooldown_steps_remaining - 1)
+            if vehicle.vehicle_id in lane_change_proposals:
+                lane_change_cooldown = math.ceil(config.lane_change_cooldown_s / dt)
             braking_deceleration = vehicle.emergency_deceleration_m_per_s2
             if vehicle.hard_braking_steps_remaining == 0 and event_rng.random() < event_probability:
                 sampled_duration_s = event_rng.uniform(*config.hard_braking_duration_s)
@@ -426,6 +598,7 @@ def advance_state(state: SimulationState) -> SimulationState:
                 reaction_time_s=vehicle.reaction_time_s,
                 emergency_deceleration_m_per_s2=vehicle.emergency_deceleration_m_per_s2,
                 hard_braking_steps_remaining=braking_steps,
+                lane_change_cooldown_steps_remaining=lane_change_cooldown,
                 acceleration_m_per_s2=(next_speed - vehicle.speed_m_per_s) / dt,
             )
             if next_position - next_vehicle.length_m / 2 >= config.road_length_m:
@@ -446,6 +619,7 @@ def advance_state(state: SimulationState) -> SimulationState:
         ],
         hard_braking_events=tuple(events),
         contact_events=tuple(contacts),
+        lane_change_events=tuple(lane_change_events),
     )
     _validate_lane_spacing(next_state)
     return next_state
@@ -506,4 +680,5 @@ def metrics_snapshot(state: SimulationState) -> SimulationMetrics:
         exited_vehicles=state.exited_vehicles,
         hard_braking_event_count=len(state.hard_braking_events),
         contact_event_count=len(state.contact_events),
+        lane_change_count=len(state.lane_change_events),
     )

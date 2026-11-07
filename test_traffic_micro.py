@@ -27,6 +27,14 @@ class RoadConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "duration bounds"):
             traffic_micro.RoadConfig(hard_braking_duration_s=(1.0,))
 
+    def test_rejects_invalid_lane_change_settings(self) -> None:
+        with self.assertRaisesRegex(ValueError, "gain"):
+            traffic_micro.RoadConfig(lane_change_min_gain_m_per_s2=-0.1)
+        with self.assertRaisesRegex(ValueError, "cooldown"):
+            traffic_micro.RoadConfig(lane_change_cooldown_s=-1)
+        with self.assertRaisesRegex(ValueError, "safe lane-change deceleration"):
+            traffic_micro.RoadConfig(lane_change_max_safe_deceleration_m_per_s2=0)
+
 
 class FleetGenerationTests(unittest.TestCase):
     def test_seed_reproduces_initial_fleet_and_driver_parameters(self) -> None:
@@ -124,6 +132,128 @@ class CarFollowingTests(unittest.TestCase):
         delayed_acceleration = next(v for v in delayed_result.vehicles if v.vehicle_id == 0).acceleration_m_per_s2
         immediate_acceleration = next(v for v in immediate_result.vehicles if v.vehicle_id == 0).acceleration_m_per_s2
         self.assertGreater(delayed_acceleration, immediate_acceleration)
+
+    def test_overtaking_moves_to_open_adjacent_lane_and_logs_event(self) -> None:
+        config = traffic_micro.RoadConfig(
+            lane_count=2,
+            vehicles_per_lane=0,
+            hard_braking_rate_per_vehicle_s=0,
+        )
+        follower = replace(self._vehicle(0, 20.0, 10.0), reaction_time_s=0)
+        leader = replace(self._vehicle(1, 33.0, 3.0), reaction_time_s=0)
+        state = traffic_micro.SimulationState(
+            time_s=0.0,
+            seed=4,
+            config=config,
+            vehicles=(follower, leader),
+            perception_history=((follower, leader),),
+        )
+
+        result = traffic_micro.advance_state(state)
+
+        moved = next(vehicle for vehicle in result.vehicles if vehicle.vehicle_id == follower.vehicle_id)
+        self.assertEqual(moved.lane_index, 1)
+        self.assertEqual(len(result.lane_change_events), 1)
+        event = result.lane_change_events[0]
+        self.assertEqual((event.vehicle_id, event.from_lane, event.to_lane), (0, 0, 1))
+        self.assertGreater(event.acceleration_gain_m_per_s2, 0)
+        self.assertEqual(traffic_micro.metrics_snapshot(result).lane_change_count, 1)
+
+    def test_lane_change_cooldown_prevents_immediate_return(self) -> None:
+        config = traffic_micro.RoadConfig(
+            lane_count=2,
+            vehicles_per_lane=0,
+            hard_braking_rate_per_vehicle_s=0,
+        )
+        ego = replace(
+            self._vehicle(0, 20.0, 10.0),
+            lane_index=1,
+            lane_change_cooldown_steps_remaining=4,
+            reaction_time_s=0,
+        )
+        slow_leader = replace(
+            self._vehicle(1, 45.0, 0.0),
+            lane_index=1,
+            reaction_time_s=0,
+        )
+        vehicles = (ego, slow_leader)
+        state = traffic_micro.SimulationState(
+            time_s=1.0,
+            seed=4,
+            config=config,
+            vehicles=vehicles,
+            perception_history=(vehicles,),
+        )
+
+        self.assertNotIn(ego.vehicle_id, traffic_micro._lane_change_proposals(state))
+        result = traffic_micro.advance_state(state)
+        self.assertEqual(next(v for v in result.vehicles if v.vehicle_id == ego.vehicle_id).lane_index, 1)
+        self.assertEqual(result.lane_change_events, ())
+
+    def test_rejects_lane_change_into_unsafe_rear_gap(self) -> None:
+        config = traffic_micro.RoadConfig(
+            lane_count=2,
+            vehicles_per_lane=0,
+            hard_braking_rate_per_vehicle_s=0,
+        )
+        ego = replace(self._vehicle(0, 20.0, 8.0), reaction_time_s=0)
+        leader = replace(self._vehicle(1, 33.0, 3.0), reaction_time_s=0)
+        target_follower = replace(
+            self._vehicle(2, 10.0, 12.0),
+            lane_index=1,
+            reaction_time_s=0,
+        )
+        vehicles = (ego, leader, target_follower)
+        state = traffic_micro.SimulationState(
+            time_s=0.0,
+            seed=4,
+            config=config,
+            vehicles=vehicles,
+            perception_history=(vehicles,),
+        )
+
+        result = traffic_micro.advance_state(state)
+
+        self.assertEqual(next(v for v in result.vehicles if v.vehicle_id == 0).lane_index, 0)
+        self.assertEqual(result.lane_change_events, ())
+
+    def test_lane_changes_are_adjacent_and_disabled_on_single_lane_roads(self) -> None:
+        config = traffic_micro.RoadConfig(
+            lane_count=3,
+            vehicles_per_lane=0,
+            hard_braking_rate_per_vehicle_s=0,
+        )
+        ego = replace(self._vehicle(0, 20.0, 10.0), reaction_time_s=0)
+        leader = replace(self._vehicle(1, 33.0, 3.0), reaction_time_s=0)
+        blocking_vehicle = replace(
+            self._vehicle(2, 20.0, 10.0),
+            lane_index=1,
+            reaction_time_s=0,
+        )
+        vehicles = (ego, leader, blocking_vehicle)
+        state = traffic_micro.SimulationState(
+            time_s=0.0,
+            seed=4,
+            config=config,
+            vehicles=vehicles,
+            perception_history=(vehicles,),
+        )
+
+        result = traffic_micro.advance_state(state)
+
+        self.assertEqual(next(v for v in result.vehicles if v.vehicle_id == 0).lane_index, 0)
+        self.assertEqual(result.lane_change_events, ())
+
+        one_lane_config = replace(config, lane_count=1)
+        one_lane_vehicles = (ego, leader)
+        one_lane_state = replace(
+            state,
+            config=one_lane_config,
+            vehicles=one_lane_vehicles,
+            perception_history=(one_lane_vehicles,),
+        )
+        one_lane_result = traffic_micro.advance_state(one_lane_state)
+        self.assertEqual(one_lane_result.lane_change_events, ())
 
     def test_hard_braking_events_are_seeded_logged_and_bounded(self) -> None:
         config = traffic_micro.RoadConfig(hard_braking_rate_per_vehicle_s=0.2)
