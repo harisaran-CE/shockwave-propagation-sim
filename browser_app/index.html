@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#101a28">
+  <meta name="theme-color" content="#f3f5f2">
   <meta name="description" content="A friendly, interactive traffic shockwave simulator powered by a conservative 1D LWR model.">
   <title>Flowline — Traffic Flow Studio</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -23,6 +23,7 @@
       <h1>See the jam<br><em>move.</em></h1>
       <p>Watch a traffic wave form, travel upstream, and ease away. Change the road conditions and explore what happens.</p>
       <div class="model-tag"><span aria-hidden="true">⌁</span> 1D traffic physics <b>·</b> 2D road view</div>
+      <button class="intro-action" id="introRunButton" type="button">Run simulation <span aria-hidden="true">→</span></button>
     </section>
 
     <section class="workspace" aria-label="Traffic simulation">
@@ -37,7 +38,7 @@
 
       <div class="readouts" aria-live="polite">
         <div><span>ROAD DENSITY</span><strong id="densityReadout">20 <small>PCU / km</small></strong></div>
-        <div><span>AVERAGE SPEED</span><strong id="speedReadout">— <small>km / h</small></strong></div>
+        <div><span>AVERAGE SPEED</span>        <strong id="speedReadout">68.8 <small>km / h</small></strong></div>
         <div><span>TRAFFIC ON ROAD</span><strong id="massReadout">20.0 <small>PCU</small></strong></div>
       </div>
 
@@ -51,7 +52,7 @@
     </section>
 
     <aside class="controls" aria-label="Simulation settings">
-      <div class="controls-heading"><div><div class="section-kicker">MAKE IT YOURS</div><h2>Set the scene</h2></div><span class="settings-icon" aria-hidden="true">✳</span></div>
+      <div class="controls-heading"><div><div class="section-kicker">MAKE IT YOURS</div><h2>Set the scene</h2></div></div>
       <p class="controls-intro">A couple of small changes can make a big difference.</p>
       <label class="field-label" for="scenarioSelect">Road situation</label>
       <select class="field-select" id="scenarioSelect">

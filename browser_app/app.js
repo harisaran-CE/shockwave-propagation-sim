@@ -21,7 +21,7 @@
   const ui = {
     time: $('timeReadout'), density: $('densityReadout'), speed: $('speedReadout'), mass: $('massReadout'),
     status: $('sceneStatus'), play: $('playButton'), playIcon: $('playIcon'), playText: $('playText'),
-    reset: $('resetButton'), speedSelect: $('speedSelect'), scenario: $('scenarioSelect'), hint: $('scenarioHint'),
+    introRun: $('introRunButton'), reset: $('resetButton'), speedSelect: $('speedSelect'), scenario: $('scenarioSelect'), hint: $('scenarioHint'),
     variability: $('inflowVariation'), variabilityValue: $('inflowVariationValue'),
     duration: $('durationSelect'), scrubber: $('scrubber'), progress: $('progressLabel'),
     csv: $('csvButton'), json: $('jsonButton')
@@ -208,14 +208,12 @@
     ctx.clearRect(0, 0, 1000, 220);
 
     // Soft roadside glow and an outlined two-lane road.
-    const glow = ctx.createLinearGradient(0, 0, 0, 220);
-    glow.addColorStop(0, '#142c35'); glow.addColorStop(.5, '#13202b'); glow.addColorStop(1, '#142c35');
-    ctx.fillStyle = glow; ctx.fillRect(0, 0, 1000, 220);
-    ctx.fillStyle = '#283746'; roundedRect(ctx, 0, 38, 1000, 142, 17); ctx.fill();
-    ctx.fillStyle = '#303e4c'; roundedRect(ctx, 0, 50, 1000, 118, 12); ctx.fill();
-    ctx.strokeStyle = '#c2d1dc68'; ctx.lineWidth = 2; ctx.setLineDash([18, 17]);
+    ctx.fillStyle = '#e8eeea'; ctx.fillRect(0, 0, 1000, 220);
+    ctx.fillStyle = '#59646a'; roundedRect(ctx, 0, 38, 1000, 142, 17); ctx.fill();
+    ctx.fillStyle = '#626d72'; roundedRect(ctx, 0, 50, 1000, 118, 12); ctx.fill();
+    ctx.strokeStyle = '#dce3df'; ctx.lineWidth = 2; ctx.setLineDash([18, 17]);
     ctx.beginPath(); ctx.moveTo(20, 109); ctx.lineTo(980, 109); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = '#bdcbd344'; ctx.fillRect(0, 52, 1000, 2); ctx.fillRect(0, 164, 1000, 2);
+    ctx.fillStyle = '#d2dad6'; ctx.fillRect(0, 52, 1000, 2); ctx.fillRect(0, 164, 1000, 2);
 
     // Subtle density wash follows the continuum solution, not an independent car model.
     if (frame) {
@@ -223,23 +221,23 @@
         const k = frame.density[i];
         if (k <= 0.026) continue;
         const intensity = Math.min(0.36, (k - 0.026) / (JAM_DENSITY - 0.026) * 0.36);
-        ctx.fillStyle = `rgba(240,181,111,${intensity})`;
+        ctx.fillStyle = `rgba(226,177,106,${intensity})`;
         ctx.fillRect(edges[i], 52, widths[i] + 1, 112);
       }
     }
 
     // Restriction marker sits at the modeled interface x ≈ 805 m.
     const restrictionX = config.position;
-    ctx.fillStyle = '#f0b56f';
+    ctx.fillStyle = '#d79a4d';
     roundedRect(ctx, restrictionX - 6, 44, 12, 128, 5); ctx.fill();
-    ctx.fillStyle = '#27231d';
+    ctx.fillStyle = '#5c492f';
     for (let y = 51; y < 166; y += 17) {
       ctx.save(); ctx.translate(restrictionX, y); ctx.rotate(-Math.PI / 4); ctx.fillRect(-5, -3, 10, 6); ctx.restore();
     }
-    ctx.fillStyle = '#f0c48f'; ctx.font = '500 14px "DM Mono", monospace'; ctx.textAlign = 'center';
+    ctx.fillStyle = '#26343a'; ctx.font = '600 14px "Segoe UI", Arial, sans-serif'; ctx.textAlign = 'center';
     const labelX = Math.max(48, Math.min(952, restrictionX));
     ctx.fillText(config.reduction === 0 ? 'REFERENCE POINT' : 'ROAD RESTRICTION', labelX, 29);
-    ctx.fillStyle = '#98aab7'; ctx.font = '12px "DM Mono", monospace';
+    ctx.fillStyle = '#526168'; ctx.font = '12px "Segoe UI", Arial, sans-serif';
     ctx.fillText(`${Math.round(config.position)} m`, labelX, 199);
 
     if (frame) drawVehicles(frame);
@@ -301,7 +299,7 @@
       const side = key.split(':')[1];
       const minX = isFullyBlocked && side === 'downstream' ? config.position + 13 : 6;
       const maxX = isFullyBlocked && side === 'upstream' ? config.position - 13 : 994;
-      const gap = 18;
+      const gap = 22;
       for (let i = 0; i < group.length; i++) {
         group[i].x = Math.max(minX, group[i].x, i ? group[i - 1].x + gap : minX);
       }
@@ -316,13 +314,12 @@
     for (const marker of positionedMarkers) {
       const y = marker.lane === 0 ? 79 : 133;
       const speedFraction = Math.max(0.04, 1 - marker.density / JAM_DENSITY);
-      const tint = speedFraction < .28 ? '#f5f1dc' : (speedFraction < .58 ? '#9bd8ba' : '#88dfe0');
+      const tint = speedFraction < .28 ? '#f0d39f' : (speedFraction < .58 ? '#c1dfcf' : '#d8e9df');
       ctx.save();
-      ctx.shadowColor = `${tint}55`; ctx.shadowBlur = 2;
-      ctx.fillStyle = tint; roundedRect(ctx, marker.x - 7, y - 5.5, 14, 11, 3); ctx.fill();
-      ctx.strokeStyle = '#13212b'; ctx.lineWidth = 1.5; ctx.stroke();
-      ctx.shadowBlur = 0; ctx.fillStyle = '#21313b';
-      roundedRect(ctx, marker.x - 2.5, y - 3.5, 5, 7, 2); ctx.fill();
+      ctx.fillStyle = tint; roundedRect(ctx, marker.x - 9, y - 5.5, 18, 11, 4); ctx.fill();
+      ctx.strokeStyle = '#36454a'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = '#526168';
+      roundedRect(ctx, marker.x - 3, y - 3.5, 6, 6, 2); ctx.fill();
       ctx.fillStyle = '#263744'; ctx.fillRect(marker.x - 5, y - 6, 3, 1.5); ctx.fillRect(marker.x + 2, y - 6, 3, 1.5);
       ctx.fillRect(marker.x - 5, y + 4.5, 3, 1.5); ctx.fillRect(marker.x + 2, y + 4.5, 3, 1.5);
       ctx.restore();
@@ -397,6 +394,9 @@
   }
 
   ui.play.addEventListener('click', () => playing ? stopPlayback() : startPlayback());
+  ui.introRun.addEventListener('click', () => {
+    if (!playing) startPlayback();
+  });
   ui.reset.addEventListener('click', () => {
     stopPlayback(); buildRun(); frameIndex = 0; updateFrame(); setStatus('READY', false);
     ui.playText.textContent = 'Run simulation'; ui.playIcon.textContent = '▶';
@@ -413,7 +413,7 @@
   ui.variability.addEventListener('change', () => {
     if (frames.length) {
       stopPlayback(); buildRun();
-      ui.playText.textContent = 'Run simulation'; ui.playIcon.textContent = 'â–¶';
+      ui.playText.textContent = 'Run simulation'; ui.playIcon.textContent = '▶';
     }
   });
   ui.scenario.addEventListener('change', () => {
@@ -426,7 +426,7 @@
     ui.hint.textContent = hints[ui.scenario.value];
     config = scenarioConfig(); ui.scrubber.disabled = true; ui.reset.disabled = true; ui.csv.disabled = true; ui.json.disabled = true;
     displayFrame = snapshot(new Float64Array(CELL_COUNT).fill(0.02), 0, 0);
-    ui.time.textContent = '00:00'; ui.density.innerHTML = '20.0 <small>PCU / km</small>'; ui.speed.innerHTML = '— <small>km / h</small>'; ui.mass.innerHTML = '20.0 <small>PCU</small>';
+    ui.time.textContent = '00:00'; ui.density.innerHTML = '20.0 <small>PCU / km</small>'; ui.speed.innerHTML = '68.8 <small>km / h</small>'; ui.mass.innerHTML = '20.0 <small>PCU</small>';
     ui.progress.textContent = 'Ready when you are'; setStatus('READY', false); drawRoad(displayFrame);
     ui.playText.textContent = 'Run simulation'; ui.playIcon.textContent = '▶';
   });
@@ -442,5 +442,6 @@
 
   config = scenarioConfig();
   frames = [];
-  drawRoad(snapshot(new Float64Array(CELL_COUNT).fill(0.02), 0));
+  displayFrame = snapshot(new Float64Array(CELL_COUNT).fill(0.02), 0);
+  drawRoad(displayFrame);
 })();

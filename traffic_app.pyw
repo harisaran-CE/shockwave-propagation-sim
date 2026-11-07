@@ -34,19 +34,18 @@ class _XorShift32:
 
 
 COLORS = {
-    "page": "#f4f7fb",
+    "page": "#f3f5f2",
     "surface": "#ffffff",
-    "ink": "#17243b",
-    "muted": "#68778d",
-    "line": "#e4eaf2",
-    "blue": "#2864dc",
-    "blue_dark": "#1f50b5",
-    "blue_pale": "#edf3ff",
-    "green": "#1fa97a",
-    "amber": "#f0ae32",
-    "red": "#e85d63",
-    "purple": "#805ad5",
-    "plot": "#f8faff",
+    "ink": "#26343a",
+    "muted": "#627078",
+    "line": "#dce4e0",
+    "blue": "#286d72",
+    "blue_dark": "#20585c",
+    "blue_pale": "#e8f1ef",
+    "green": "#39836d",
+    "amber": "#bf7626",
+    "red": "#c85f55",
+    "plot": "#f7f9f7",
 }
 
 
@@ -99,13 +98,34 @@ class FlowlineApp(tk.Tk):
             background=COLORS["surface"],
             foreground=COLORS["ink"],
             arrowcolor=COLORS["muted"],
-            padding=(8, 7),
+            padding=(9, 8),
+            bordercolor=COLORS["line"],
+        )
+        style.map(
+            "TCombobox",
+            fieldbackground=[("readonly", COLORS["surface"])],
+            foreground=[("readonly", COLORS["ink"])],
+        )
+        style.configure(
+            "TSpinbox",
+            fieldbackground=COLORS["surface"],
+            background=COLORS["surface"],
+            foreground=COLORS["ink"],
+            arrowcolor=COLORS["muted"],
+            padding=(7, 5),
+            bordercolor=COLORS["line"],
+        )
+        style.configure(
+            "TButton",
+            background=COLORS["surface"],
+            foreground=COLORS["ink"],
+            padding=(10, 7),
             bordercolor=COLORS["line"],
         )
         style.configure(
             "Timeline.Horizontal.TScale",
             background=COLORS["surface"],
-            troughcolor="#e8edf5",
+            troughcolor="#e3e9e5",
         )
 
     def _panel(self, parent: tk.Widget, **grid_options: object) -> tk.Frame:
@@ -152,7 +172,7 @@ class FlowlineApp(tk.Tk):
         ).pack(anchor="w", pady=(1, 0))
         self._label(
             header,
-            "DEMO SCENARIO",
+            "TRAFFIC MODEL",
             font=("Segoe UI", 8, "bold"),
             color=COLORS["blue"],
             bg=COLORS["blue_pale"],
@@ -380,12 +400,12 @@ class FlowlineApp(tk.Tk):
         card = self._panel(parent)
         column = len(parent.grid_slaves())
         card.grid(row=0, column=column, sticky="nsew", padx=(0 if column == 0 else 8, 0))
-        self._label(card, title, font=("Segoe UI", 8, "bold"), color=COLORS["muted"]).pack(
+        self._label(card, title, font=("Segoe UI", 9, "bold"), color=COLORS["muted"]).pack(
             anchor="w", padx=13, pady=(12, 2)
         )
         row = tk.Frame(card, bg=COLORS["surface"])
         row.pack(anchor="w", padx=13, pady=(0, 12))
-        self._label(row, textvariable=variable, font=("Segoe UI", 16, "bold")).pack(side="left")
+        self._label(row, textvariable=variable, font=("Segoe UI", 15, "bold")).pack(side="left")
         if unit:
             self._label(row, unit, font=("Segoe UI", 8), color=COLORS["muted"]).pack(side="left", padx=(4, 0), pady=(6, 0))
 
@@ -648,10 +668,10 @@ class FlowlineApp(tk.Tk):
         densities = state.density_vehicles_per_m
         canvas.create_text(left, 22, text="START", anchor="w", fill=COLORS["muted"], font=("Segoe UI", 8, "bold"))
         canvas.create_text(right, 22, text="ROAD END", anchor="e", fill=COLORS["muted"], font=("Segoe UI", 8, "bold"))
-        canvas.create_rectangle(left, road_top, right, road_bottom, fill="#29364b", outline="")
-        canvas.create_line(left, 91, right, 91, fill="#d6b85c", dash=(12, 9), width=2)
-        canvas.create_line(left, road_top + 5, right, road_top + 5, fill="#718096", width=1)
-        canvas.create_line(left, road_bottom - 5, right, road_bottom - 5, fill="#718096", width=1)
+        canvas.create_rectangle(left, road_top, right, road_bottom, fill="#59646a", outline="")
+        canvas.create_line(left, 91, right, 91, fill="#d8c99e", dash=(12, 9), width=2)
+        canvas.create_line(left, road_top + 5, right, road_top + 5, fill="#899397", width=1)
+        canvas.create_line(left, road_bottom - 5, right, road_bottom - 5, fill="#899397", width=1)
 
         # Keep each displayed marker attached to a fixed parcel of mass. The
         # old per-frame quantiles rescaled every marker whenever total mass
@@ -729,7 +749,7 @@ class FlowlineApp(tk.Tk):
         for x, marker, _side in visible_markers:
             lane = marker % 2
             y = 68 if lane == 0 else 113
-            body = "#64b5f6" if marker % 3 else "#f4f7fb"
+            body = "#a9d8c4" if marker % 3 else "#f2f3ed"
             canvas.create_rectangle(x - 6, y - 4, x + 6, y + 4, fill=body, outline="#182235", width=1)
             canvas.create_rectangle(x - 3, y - 3, x + 3, y, fill="#b9e2ff", outline="")
             canvas.create_oval(x - 4, y + 2, x - 2, y + 4, fill="#111827", outline="")
@@ -737,10 +757,10 @@ class FlowlineApp(tk.Tk):
             marker_count += 1
 
         if state.config.lane_reduction > 0:
-            canvas.create_rectangle(closure_x - 4, road_top - 7, closure_x + 4, road_bottom + 7, fill=COLORS["purple"], outline="white", width=1)
+            canvas.create_rectangle(closure_x - 4, road_top - 7, closure_x + 4, road_bottom + 7, fill=COLORS["amber"], outline="white", width=1)
             for stripe_y in range(road_top - 4, road_bottom + 4, 12):
                 canvas.create_line(closure_x - 3, stripe_y + 6, closure_x + 3, stripe_y, fill="white", width=2)
-            canvas.create_text(closure_x, 155, text=f"Restriction: {state.config.bottleneck_position_m:.0f} m", fill=COLORS["purple"], font=("Segoe UI", 8, "bold"))
+            canvas.create_text(closure_x, 155, text=f"Restriction: {state.config.bottleneck_position_m:.0f} m", fill=COLORS["amber"], font=("Segoe UI", 8, "bold"))
         canvas.create_text(left, 155, text=f"{marker_count} car markers shown", anchor="w", fill=COLORS["muted"], font=("Segoe UI", 8))
         canvas.create_text(
             (left + right) / 2,
