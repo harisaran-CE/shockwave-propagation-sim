@@ -127,6 +127,16 @@ python traffic_sim.py --steps 20 --no-sleep
 or drawing frames. `--no-sleep` keeps the terminal renderer enabled but removes
 real-time pacing. Both options are useful for debugging and repeatable checks.
 
+## Desktop application
+
+The Windows desktop app is called Flowline Traffic Studio. Users can run
+`FlowlineTrafficStudio.exe` without installing Python or using a terminal. The
+app has a guided demo, an animated traffic-density view, a build-up chart,
+plain-language status, playback speed and timeline controls, and CSV/JSON
+exports. For the portable user package, see [`USER_GUIDE.md`](./USER_GUIDE.md).
+To rebuild the Windows release, follow [`PUBLISHING.md`](./PUBLISHING.md) and
+run [`build_windows.ps1`](./build_windows.ps1).
+
 ## Numerical method
 
 For cell `i`, width `Δxᵢ`, and interface fluxes `Fᵢ₋₁/₂` and `Fᵢ₊₁/₂`, the

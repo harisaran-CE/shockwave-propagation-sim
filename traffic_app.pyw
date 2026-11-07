@@ -1,0 +1,734 @@
+"""Friendly desktop front end for the project's 1D traffic-flow model."""
+
+from __future__ import annotations
+
+import csv
+import bisect
+import json
+from pathlib import Path
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk
+
+import traffic_sim
+
+
+APP_TITLE = "Flowline Traffic Studio"
+COLORS = {
+    "page": "#f4f7fb",
+    "surface": "#ffffff",
+    "ink": "#17243b",
+    "muted": "#68778d",
+    "line": "#e4eaf2",
+    "blue": "#2864dc",
+    "blue_dark": "#1f50b5",
+    "blue_pale": "#edf3ff",
+    "green": "#1fa97a",
+    "amber": "#f0ae32",
+    "red": "#e85d63",
+    "purple": "#805ad5",
+    "plot": "#f8faff",
+}
+
+
+class FlowlineApp(tk.Tk):
+    """A guided, non-terminal interface to the 1D traffic simulation."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.title(APP_TITLE)
+        self.geometry("1240x850")
+        self.minsize(1050, 760)
+        self.configure(bg=COLORS["page"])
+
+        self.history: list[traffic_sim.SimulationState] = []
+        self.current_step = 0
+        self.playing = False
+        self.after_id: str | None = None
+        self.is_scrubbing = False
+
+        self.speed_var = tk.StringVar(value="1x")
+        self.demand_var = tk.StringVar(value="1200")
+        self.closure_position_var = tk.StringVar(value="805")
+        self.closure_reduction_var = tk.StringVar(value="100% — fully closed")
+        self.duration_var = tk.StringVar(value="3 minutes")
+        self.time_var = tk.StringVar(value="0.00 s")
+        self.mass_var = tk.StringVar(value="—")
+        self.density_var = tk.StringVar(value="—")
+        self.speed_metric_var = tk.StringVar(value="—")
+        self.flow_var = tk.StringVar(value="—")
+        self.summary_var = tk.StringVar(value="Run the demo to see how a road closure changes traffic.")
+        self.progress_var = tk.StringVar(value="Ready when you are")
+        self.run_config = traffic_sim.SimulationConfig()
+        self.total_steps = traffic_sim.TOTAL_DURATION
+
+        self._setup_styles()
+        self._build_layout()
+        self._show_initial_state()
+
+    def _setup_styles(self) -> None:
+        style = ttk.Style(self)
+        style.theme_use("clam")
+        style.configure(
+            "TCombobox",
+            fieldbackground=COLORS["surface"],
+            background=COLORS["surface"],
+            foreground=COLORS["ink"],
+            arrowcolor=COLORS["muted"],
+            padding=(8, 7),
+            bordercolor=COLORS["line"],
+        )
+        style.configure(
+            "Timeline.Horizontal.TScale",
+            background=COLORS["surface"],
+            troughcolor="#e8edf5",
+        )
+
+    def _panel(self, parent: tk.Widget, **grid_options: object) -> tk.Frame:
+        panel = tk.Frame(
+            parent,
+            bg=COLORS["surface"],
+            highlightbackground=COLORS["line"],
+            highlightthickness=1,
+        )
+        panel.grid(**grid_options)
+        return panel
+
+    @staticmethod
+    def _label(
+        parent: tk.Widget,
+        text: str,
+        *,
+        font: tuple[object, ...] = ("Segoe UI", 10),
+        color: str = COLORS["ink"],
+        bg: str = COLORS["surface"],
+        **options: object,
+    ) -> tk.Label:
+        return tk.Label(parent, text=text, font=font, fg=color, bg=bg, **options)
+
+    def _build_layout(self) -> None:
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+
+        header = tk.Frame(self, bg=COLORS["page"])
+        header.grid(row=0, column=0, sticky="ew", padx=30, pady=(22, 16))
+        logo = tk.Canvas(header, width=42, height=42, bg=COLORS["blue"], highlightthickness=0)
+        logo.create_line(7, 29, 17, 18, 24, 25, 35, 10, fill="white", width=3, smooth=True)
+        logo.create_oval(31, 6, 38, 13, fill="white", outline="")
+        logo.pack(side="left", padx=(0, 12))
+        text_block = tk.Frame(header, bg=COLORS["page"])
+        text_block.pack(side="left", anchor="w")
+        self._label(text_block, "Flowline", font=("Segoe UI", 20, "bold"), bg=COLORS["page"]).pack(anchor="w")
+        self._label(
+            text_block,
+            "Traffic Studio  ·  Explore how congestion moves",
+            font=("Segoe UI", 9),
+            color=COLORS["muted"],
+            bg=COLORS["page"],
+        ).pack(anchor="w", pady=(1, 0))
+        self._label(
+            header,
+            "DEMO SCENARIO",
+            font=("Segoe UI", 8, "bold"),
+            color=COLORS["blue"],
+            bg=COLORS["blue_pale"],
+            padx=11,
+            pady=7,
+        ).pack(side="right", anchor="center")
+
+        content = tk.Frame(self, bg=COLORS["page"])
+        content.grid(row=1, column=0, sticky="nsew", padx=30, pady=(0, 16))
+        content.grid_columnconfigure(1, weight=1)
+        content.grid_rowconfigure(0, weight=1)
+
+        self._build_sidebar(content)
+        self._build_dashboard(content)
+
+        footer = tk.Frame(self, bg=COLORS["page"])
+        footer.grid(row=2, column=0, sticky="ew", padx=30, pady=(0, 16))
+        self._label(
+            footer,
+            "Model view: each color block shows average traffic density along the 1 km road—not individual cars.",
+            font=("Segoe UI", 8),
+            color=COLORS["muted"],
+            bg=COLORS["page"],
+        ).pack(side="left")
+        self._label(
+            footer,
+            "Playback speed changes viewing only; the model time step stays fixed.",
+            font=("Segoe UI", 8),
+            color=COLORS["muted"],
+            bg=COLORS["page"],
+        ).pack(side="right")
+
+    def _build_sidebar(self, parent: tk.Frame) -> None:
+        sidebar = tk.Frame(parent, bg=COLORS["page"], width=280)
+        sidebar.grid(row=0, column=0, sticky="nsw", padx=(0, 16))
+        sidebar.grid_propagate(False)
+
+        intro = self._panel(sidebar)
+        intro.pack(fill="x", pady=(0, 12))
+        self._label(intro, "Set up a run", font=("Segoe UI", 14, "bold")).pack(
+            anchor="w", padx=17, pady=(17, 5)
+        )
+        self._label(
+            intro,
+            "Change the traffic and road settings below, then run the simulation.",
+            font=("Segoe UI", 9),
+            color=COLORS["muted"],
+            justify="left",
+            wraplength=235,
+        ).pack(anchor="w", padx=17, pady=(0, 15))
+
+        scenario = self._panel(sidebar)
+        scenario.pack(fill="x", pady=(0, 12))
+        self._label(scenario, "SCENARIO SETTINGS", font=("Segoe UI", 8, "bold"), color=COLORS["muted"]).pack(
+            anchor="w", padx=17, pady=(15, 10)
+        )
+        self._scenario_field(scenario, "Arriving traffic", "Passenger-car units per hour", self.demand_var,
+                             from_=0, to=3000, increment=50, suffix="PCU/h")
+        self._scenario_field(scenario, "Road restriction at", "Distance from the start", self.closure_position_var,
+                             from_=50, to=950, increment=5, suffix="m")
+
+        self._label(scenario, "Capacity reduction", font=("Segoe UI", 9, "bold")).pack(
+            anchor="w", padx=17, pady=(8, 2)
+        )
+        self._label(scenario, "How much the restriction limits flow", font=("Segoe UI", 8), color=COLORS["muted"]).pack(
+            anchor="w", padx=17, pady=(0, 5)
+        )
+        ttk.Combobox(
+            scenario,
+            textvariable=self.closure_reduction_var,
+            values=("0% — no restriction", "25% — light restriction", "50% — half closed", "75% — severe restriction", "100% — fully closed"),
+            state="readonly",
+        ).pack(fill="x", padx=17, pady=(0, 10))
+
+        self._label(scenario, "Run length", font=("Segoe UI", 9, "bold")).pack(
+            anchor="w", padx=17, pady=(3, 2)
+        )
+        ttk.Combobox(
+            scenario,
+            textvariable=self.duration_var,
+            values=("1 minute", "2 minutes", "3 minutes", "5 minutes"),
+            state="readonly",
+        ).pack(fill="x", padx=17, pady=(0, 15))
+
+        actions = self._panel(sidebar)
+        actions.pack(fill="x", pady=(0, 12))
+        self.run_button = tk.Button(
+            actions,
+            text="Run simulation",
+            command=self.run_simulation,
+            bg=COLORS["blue"],
+            activebackground=COLORS["blue_dark"],
+            activeforeground="white",
+            fg="white",
+            relief="flat",
+            bd=0,
+            cursor="hand2",
+            font=("Segoe UI", 10, "bold"),
+            padx=14,
+            pady=11,
+        )
+        self.run_button.pack(fill="x", padx=14, pady=(15, 8))
+        self.run_button.bind("<Enter>", lambda _event: self.run_button.configure(bg=COLORS["blue_dark"]))
+        self.run_button.bind("<Leave>", lambda _event: self.run_button.configure(bg=COLORS["blue"]))
+        ttk.Button(actions, text="Start over", command=self.reset).pack(fill="x", padx=14, pady=(0, 14))
+
+        export = self._panel(sidebar)
+        export.pack(fill="x")
+        self._label(export, "TAKE YOUR RESULTS", font=("Segoe UI", 8, "bold"), color=COLORS["muted"]).pack(
+            anchor="w", padx=17, pady=(15, 7)
+        )
+        self.csv_button = ttk.Button(export, text="Save data as CSV…", command=self.export_csv, state="disabled")
+        self.csv_button.pack(fill="x", padx=14, pady=(0, 7))
+        self.json_button = ttk.Button(export, text="Save full run as JSON…", command=self.export_json, state="disabled")
+        self.json_button.pack(fill="x", padx=14, pady=(0, 13))
+
+    def _scenario_field(
+        self,
+        parent: tk.Frame,
+        title: str,
+        subtitle: str,
+        variable: tk.StringVar,
+        *,
+        from_: int,
+        to: int,
+        increment: int,
+        suffix: str,
+    ) -> None:
+        self._label(parent, title, font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=17, pady=(3, 2))
+        self._label(parent, subtitle, font=("Segoe UI", 8), color=COLORS["muted"]).pack(anchor="w", padx=17, pady=(0, 5))
+        row = tk.Frame(parent, bg=COLORS["surface"])
+        row.pack(fill="x", padx=17, pady=(0, 10))
+        ttk.Spinbox(
+            row,
+            textvariable=variable,
+            from_=from_,
+            to=to,
+            increment=increment,
+            width=9,
+            justify="right",
+        ).pack(side="left")
+        self._label(row, suffix, font=("Segoe UI", 8), color=COLORS["muted"]).pack(side="left", padx=(7, 0))
+
+    def _build_dashboard(self, parent: tk.Frame) -> None:
+        dashboard = tk.Frame(parent, bg=COLORS["page"])
+        dashboard.grid(row=0, column=1, sticky="nsew")
+        dashboard.grid_columnconfigure(0, weight=1)
+
+        metrics = tk.Frame(dashboard, bg=COLORS["page"])
+        metrics.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+        for column in range(5):
+            metrics.grid_columnconfigure(column, weight=1, uniform="metric")
+        self._metric_card(metrics, "SIMULATION TIME", self.time_var, "s")
+        self._metric_card(metrics, "VEHICLES ON ROAD", self.mass_var, "PCU")
+        self._metric_card(metrics, "MEAN DENSITY", self.density_var, "PCU/km")
+        self._metric_card(metrics, "AVERAGE SPEED", self.speed_metric_var, "km/h")
+        self._metric_card(metrics, "AVERAGE FLOW", self.flow_var, "PCU/h")
+
+        road_panel = self._panel(dashboard)
+        road_panel.grid(row=1, column=0, sticky="ew", pady=(0, 12))
+        self._panel_heading(road_panel, "Traffic along the road", "Warm colors indicate heavier traffic")
+        self.road_canvas = tk.Canvas(road_panel, height=190, bg=COLORS["surface"], highlightthickness=0)
+        self.road_canvas.pack(fill="x", padx=18, pady=(0, 12))
+        self.road_canvas.bind("<Configure>", lambda _event: self._draw_road())
+
+        chart_panel = self._panel(dashboard)
+        chart_panel.grid(row=2, column=0, sticky="nsew", pady=(0, 12))
+        dashboard.grid_rowconfigure(2, weight=1)
+        self._panel_heading(chart_panel, "What is changing?", "Vehicles accumulating on the road")
+        self.chart_canvas = tk.Canvas(chart_panel, height=190, bg=COLORS["surface"], highlightthickness=0)
+        self.chart_canvas.pack(fill="both", expand=True, padx=18, pady=(0, 8))
+        self.chart_canvas.bind("<Configure>", lambda _event: self._draw_chart())
+
+        summary = self._panel(dashboard)
+        summary.grid(row=3, column=0, sticky="ew")
+        badge = tk.Canvas(summary, width=30, height=30, bg=COLORS["blue_pale"], highlightthickness=0)
+        badge.create_text(15, 15, text="i", fill=COLORS["blue"], font=("Segoe UI", 15, "bold"))
+        badge.pack(side="left", padx=(15, 10), pady=12)
+        self._label(
+            summary,
+            textvariable=self.summary_var,
+            font=("Segoe UI", 9),
+            color=COLORS["ink"],
+            justify="left",
+            wraplength=680,
+        ).pack(side="left", fill="x", expand=True, padx=(0, 12), pady=12)
+
+        timeline_panel = self._panel(dashboard)
+        timeline_panel.grid(row=4, column=0, sticky="ew", pady=(12, 0))
+        timeline_panel.grid_columnconfigure(0, weight=1)
+        line = tk.Frame(timeline_panel, bg=COLORS["surface"])
+        line.grid(row=0, column=0, sticky="ew", padx=16, pady=(12, 10))
+        line.grid_columnconfigure(1, weight=1)
+        self.play_button = ttk.Button(line, text="▶  Play", command=self.toggle_playback, state="disabled")
+        self.play_button.grid(row=0, column=0, padx=(0, 13))
+        self.timeline = ttk.Scale(
+            line,
+            from_=0,
+            to=traffic_sim.TOTAL_DURATION,
+            command=self.scrub_to,
+            style="Timeline.Horizontal.TScale",
+        )
+        self.timeline.grid(row=0, column=1, sticky="ew")
+        self.timeline.bind("<ButtonPress-1>", self._begin_scrub)
+        self.timeline.bind("<ButtonRelease-1>", self._end_scrub)
+        self.time_readout = self._label(line, "00:00 / 03:00", font=("Segoe UI", 9, "bold"), color=COLORS["muted"])
+        self.time_readout.grid(row=0, column=2, padx=(13, 15))
+        ttk.Label(line, text="Speed", font=("Segoe UI", 9)).grid(row=0, column=3, padx=(0, 6))
+        speed_box = ttk.Combobox(
+            line,
+            textvariable=self.speed_var,
+            values=("0.25x", "0.5x", "0.75x", "1x", "2x", "3x"),
+            width=7,
+            state="readonly",
+        )
+        speed_box.grid(row=0, column=4)
+        speed_box.bind("<<ComboboxSelected>>", lambda _event: self._restart_if_playing())
+        self._label(timeline_panel, textvariable=self.progress_var, font=("Segoe UI", 8), color=COLORS["muted"]).grid(
+            row=1, column=0, sticky="w", padx=17, pady=(0, 10)
+        )
+
+    def _metric_card(self, parent: tk.Frame, title: str, variable: tk.StringVar, unit: str) -> None:
+        card = self._panel(parent)
+        column = len(parent.grid_slaves())
+        card.grid(row=0, column=column, sticky="nsew", padx=(0 if column == 0 else 8, 0))
+        self._label(card, title, font=("Segoe UI", 8, "bold"), color=COLORS["muted"]).pack(
+            anchor="w", padx=13, pady=(12, 2)
+        )
+        row = tk.Frame(card, bg=COLORS["surface"])
+        row.pack(anchor="w", padx=13, pady=(0, 12))
+        self._label(row, textvariable=variable, font=("Segoe UI", 16, "bold")).pack(side="left")
+        if unit:
+            self._label(row, unit, font=("Segoe UI", 8), color=COLORS["muted"]).pack(side="left", padx=(4, 0), pady=(6, 0))
+
+    def _panel_heading(self, panel: tk.Frame, title: str, subtitle: str) -> None:
+        header = tk.Frame(panel, bg=COLORS["surface"])
+        header.pack(fill="x", padx=18, pady=(14, 9))
+        self._label(header, title, font=("Segoe UI", 12, "bold")).pack(side="left")
+        self._label(header, subtitle, font=("Segoe UI", 8), color=COLORS["muted"]).pack(side="right")
+
+    def _selected_config(self) -> traffic_sim.SimulationConfig:
+        demand = int(self.demand_var.get())
+        position = float(self.closure_position_var.get())
+        reduction = int(self.closure_reduction_var.get().split("%", 1)[0])
+        if not 0 <= demand <= 3000:
+            raise ValueError("Arriving traffic must be between 0 and 3,000 PCU/h.")
+        if not 50 <= position <= 950:
+            raise ValueError("Choose a restriction location between 50 m and 950 m.")
+        config = traffic_sim.SimulationConfig(
+            inflow_demand_vehicles_per_s=demand / 3600.0,
+            bottleneck_position_m=position,
+            lane_reduction=reduction / 100.0,
+        )
+        traffic_sim.validate_configuration(config)
+        return config
+
+    def _show_initial_state(self) -> None:
+        try:
+            self.run_config = self._selected_config()
+        except (TypeError, ValueError):
+            self.run_config = traffic_sim.SimulationConfig()
+        initial = traffic_sim.initialize_state(self.run_config)
+        self._update_metrics(initial)
+        self._draw_road(initial)
+        self._draw_chart()
+
+    def run_simulation(self) -> None:
+        self.pause()
+        try:
+            config = self._selected_config()
+            duration_minutes = int(self.duration_var.get().split(" ", 1)[0])
+            self.total_steps = round(duration_minutes * 60 / config.time_step_s)
+            traffic_sim.validate_configuration(config)
+        except (TypeError, ValueError) as error:
+            messagebox.showwarning(APP_TITLE, str(error), parent=self)
+            return
+
+        self.run_config = config
+        self.run_button.configure(state="disabled", text="Running…")
+        self.progress_var.set(f"Calculating your {duration_minutes}-minute scenario…")
+        self.update_idletasks()
+        try:
+            state = traffic_sim.initialize_state(config)
+            states = [state]
+            for step in range(self.total_steps):
+                state = traffic_sim.advance_state(state)
+                states.append(state)
+                if step and step % 120 == 0:
+                    self.progress_var.set(f"Calculating… {step * config.time_step_s:.0f} of {duration_minutes * 60} seconds")
+                    self.update_idletasks()
+            self.history = states
+            self.current_step = 0
+            self.timeline.configure(to=self.total_steps)
+            self.timeline.set(0)
+            self.play_button.configure(state="normal")
+            self.csv_button.configure(state="normal")
+            self.json_button.configure(state="normal")
+            self.progress_var.set("Your run is ready · use Play or drag the timeline to explore")
+            self._render_frame()
+        except Exception as error:
+            self.progress_var.set("The simulation could not be completed")
+            messagebox.showerror(APP_TITLE, f"The simulation could not be completed.\n\n{error}", parent=self)
+        finally:
+            self.run_button.configure(state="normal", text="Run simulation")
+
+    def reset(self) -> None:
+        self.pause()
+        self.history = []
+        self.current_step = 0
+        self.timeline.set(0)
+        self.play_button.configure(state="disabled", text="▶  Play")
+        self.csv_button.configure(state="disabled")
+        self.json_button.configure(state="disabled")
+        self.progress_var.set("Ready when you are")
+        self.summary_var.set("Set your scenario, then run it to see how the traffic changes.")
+        self._show_initial_state()
+
+    def toggle_playback(self) -> None:
+        if self.playing:
+            self.pause()
+        else:
+            self.play()
+
+    def play(self) -> None:
+        if not self.history or self.current_step >= len(self.history) - 1:
+            return
+        self.playing = True
+        self.play_button.configure(text="❚❚  Pause")
+        self._play_next_frame()
+
+    def pause(self) -> None:
+        self.playing = False
+        if hasattr(self, "play_button"):
+            state = "normal" if self.history else "disabled"
+            self.play_button.configure(text="▶  Play", state=state)
+        if self.after_id is not None:
+            self.after_cancel(self.after_id)
+            self.after_id = None
+
+    def _play_next_frame(self) -> None:
+        if not self.playing:
+            return
+        if self.current_step + 1 >= len(self.history):
+            self.pause()
+            return
+        self.current_step += 1
+        self.timeline.set(self.current_step)
+        self._render_frame()
+        scale = {"0.25x": 0.25, "0.5x": 0.5, "0.75x": 0.75, "1x": 1.0, "2x": 2.0, "3x": 3.0}[self.speed_var.get()]
+        self.after_id = self.after(max(15, round(self.run_config.time_step_s * 1000 / scale)), self._play_next_frame)
+
+    def _restart_if_playing(self) -> None:
+        if self.playing:
+            self.pause()
+            self.play()
+
+    def _begin_scrub(self, _event: tk.Event) -> None:
+        self.is_scrubbing = True
+        self.pause()
+
+    def _end_scrub(self, _event: tk.Event) -> None:
+        self.is_scrubbing = False
+
+    def scrub_to(self, raw_step: str) -> None:
+        if not self.history:
+            return
+        step = max(0, min(len(self.history) - 1, round(float(raw_step))))
+        if step != self.current_step:
+            self.current_step = step
+            self._render_frame()
+
+    def _render_frame(self) -> None:
+        if not self.history:
+            return
+        state = self.history[self.current_step]
+        self._update_metrics(state)
+        self._draw_road(state)
+        self._draw_chart()
+        seconds = float(state.time_s)
+        total_seconds = float(self.history[-1].time_s)
+        self.time_readout.configure(text=f"{self._format_time(seconds)} / {self._format_time(total_seconds)}")
+        self.progress_var.set(f"Frame {self.current_step:,} of {len(self.history) - 1:,} · simulated time {seconds:.2f} s")
+        initial_mass = float(self.history[0].vehicle_mass)
+        current_mass = float(state.vehicle_mass)
+        if current_mass > initial_mass + 0.01:
+            self.summary_var.set(
+                f"Traffic is building up: the road restriction limits flow, "
+                f"so about {current_mass - initial_mass:.1f} additional PCU have accumulated on this 1 km section."
+            )
+        else:
+            self.summary_var.set("Traffic has not built up yet. Use Play to watch the scenario unfold over time.")
+
+    @staticmethod
+    def _format_time(seconds: float) -> str:
+        whole_seconds = int(seconds)
+        return f"{whole_seconds // 60:02d}:{whole_seconds % 60:02d}"
+
+    def _update_metrics(self, state: traffic_sim.SimulationState) -> None:
+        metrics = traffic_sim.metrics_snapshot(state)
+        self.time_var.set(f"{float(metrics['time_s']):.1f}")
+        self.mass_var.set(f"{float(metrics['vehicle_mass']):.1f}")
+        self.density_var.set(f"{float(metrics['mean_density_pcu_per_km']):.1f}")
+        self.speed_metric_var.set(f"{float(metrics['mean_speed_km_per_h']):.1f}")
+        self.flow_var.set(f"{float(metrics['mean_flow_pcu_per_h']):.0f}")
+
+    def _draw_road(self, state: traffic_sim.SimulationState | None = None) -> None:
+        if not hasattr(self, "road_canvas"):
+            return
+        canvas = self.road_canvas
+        canvas.delete("all")
+        width = max(canvas.winfo_width(), 600)
+        left, right = 42, width - 42
+        road_top, road_bottom = 49, 133
+        state = state or traffic_sim.initialize_state()
+        edges = state.cell_edges_m
+        densities = state.density_vehicles_per_m
+        canvas.create_text(left, 22, text="START", anchor="w", fill=COLORS["muted"], font=("Segoe UI", 8, "bold"))
+        canvas.create_text(right, 22, text="ROAD END", anchor="e", fill=COLORS["muted"], font=("Segoe UI", 8, "bold"))
+        canvas.create_rectangle(left, road_top, right, road_bottom, fill="#29364b", outline="")
+        canvas.create_line(left, 91, right, 91, fill="#d6b85c", dash=(12, 9), width=2)
+        canvas.create_line(left, road_top + 5, right, road_top + 5, fill="#718096", width=1)
+        canvas.create_line(left, road_bottom - 5, right, road_bottom - 5, fill="#718096", width=1)
+
+        # Vehicle markers visualize continuum density; they are not separately
+        # tracked vehicles in the underlying LWR solver.
+        total_mass = max(0.0, float(state.vehicle_mass))
+        marker_count = min(160, int(round(total_mass)))
+        if marker_count:
+            cumulative_mass = []
+            running_mass = 0.0
+            for cell, density in enumerate(densities):
+                running_mass += float(density) * float(edges[cell + 1] - edges[cell])
+                cumulative_mass.append(running_mass)
+            for marker in range(marker_count):
+                target_mass = (marker + 0.5) * total_mass / marker_count
+                cell = min(bisect.bisect_left(cumulative_mass, target_mass), len(densities) - 1)
+                previous_mass = cumulative_mass[cell - 1] if cell else 0.0
+                density = max(float(densities[cell]), 1e-12)
+                position_m = float(edges[cell]) + (target_mass - previous_mass) / density
+                x = left + position_m / state.config.road_length_m * (right - left)
+                y = 68 if marker % 2 == 0 else 113
+                body = "#64b5f6" if marker % 3 else "#f4f7fb"
+                canvas.create_rectangle(x - 9, y - 5, x + 9, y + 5, fill=body, outline="#182235", width=1)
+                canvas.create_rectangle(x - 4, y - 4, x + 4, y + 1, fill="#b9e2ff", outline="")
+                canvas.create_oval(x - 6, y + 3, x - 2, y + 7, fill="#111827", outline="")
+                canvas.create_oval(x + 3, y + 3, x + 7, y + 7, fill="#111827", outline="")
+
+        bottleneck = traffic_sim._bottleneck_index(state.config)
+        closure_x = left + float(edges[bottleneck]) / state.config.road_length_m * (right - left)
+        if state.config.lane_reduction > 0:
+            canvas.create_rectangle(closure_x - 4, road_top - 7, closure_x + 4, road_bottom + 7, fill=COLORS["purple"], outline="white", width=1)
+            for stripe_y in range(road_top - 4, road_bottom + 4, 12):
+                canvas.create_line(closure_x - 3, stripe_y + 6, closure_x + 3, stripe_y, fill="white", width=2)
+            canvas.create_text(closure_x, 155, text=f"Restriction: {state.config.bottleneck_position_m:.0f} m", fill=COLORS["purple"], font=("Segoe UI", 8, "bold"))
+        canvas.create_text(left, 155, text=f"{marker_count} car markers shown", anchor="w", fill=COLORS["muted"], font=("Segoe UI", 8))
+        canvas.create_text(
+            (left + right) / 2,
+            177,
+            text="Car positions visualize traffic density; the physics model tracks continuous traffic flow.",
+            fill=COLORS["muted"],
+            font=("Segoe UI", 8),
+        )
+
+    @staticmethod
+    def _density_color(ratio: float) -> str:
+        ratio = max(0.0, min(1.0, ratio))
+        if ratio < 0.45:
+            blend = ratio / 0.45
+            return FlowlineApp._mix_color("#8fe0c0", "#f5cd6b", blend)
+        blend = (ratio - 0.45) / 0.55
+        return FlowlineApp._mix_color("#f5cd6b", "#eb6f73", blend)
+
+    @staticmethod
+    def _mix_color(start: str, end: str, fraction: float) -> str:
+        start_rgb = tuple(int(start[index : index + 2], 16) for index in (1, 3, 5))
+        end_rgb = tuple(int(end[index : index + 2], 16) for index in (1, 3, 5))
+        channels = tuple(round(a + (b - a) * fraction) for a, b in zip(start_rgb, end_rgb))
+        return "#" + "".join(f"{channel:02x}" for channel in channels)
+
+    def _draw_chart(self) -> None:
+        if not hasattr(self, "chart_canvas"):
+            return
+        canvas = self.chart_canvas
+        canvas.delete("all")
+        width = max(canvas.winfo_width(), 500)
+        height = max(canvas.winfo_height(), 165)
+        left, right, top, bottom = 54, width - 16, 12, height - 28
+        canvas.create_rectangle(left, top, right, bottom, fill=COLORS["plot"], outline="")
+        if not self.history:
+            canvas.create_text(
+                (left + right) / 2,
+                (top + bottom) / 2,
+                text="Your traffic build-up chart will appear here after you run a simulation.",
+                fill=COLORS["muted"],
+                font=("Segoe UI", 9),
+            )
+            return
+
+        masses = [float(state.vehicle_mass) for state in self.history]
+        minimum = min(masses)
+        maximum = max(masses)
+        span = max(maximum - minimum, 1.0)
+        for fraction in (0.0, 0.5, 1.0):
+            y = bottom - fraction * (bottom - top)
+            value = minimum + fraction * span
+            canvas.create_line(left, y, right, y, fill=COLORS["line"], dash=(2, 4))
+            canvas.create_text(left - 7, y, text=f"{value:.0f}", anchor="e", fill=COLORS["muted"], font=("Segoe UI", 8))
+
+        max_step = max(len(masses) - 1, 1)
+        points: list[float] = []
+        for step, mass in enumerate(masses):
+            x = left + step / max_step * (right - left)
+            y = bottom - (mass - minimum) / span * (bottom - top)
+            points.extend((x, y))
+        if len(points) >= 4:
+            canvas.create_line(*points, fill=COLORS["blue"], width=2, smooth=True)
+
+        current_x = left + min(self.current_step, max_step) / max_step * (right - left)
+        canvas.create_line(current_x, top, current_x, bottom, fill=COLORS["blue"], dash=(4, 4))
+        duration_min = float(self.history[-1].time_s) / 60.0
+        canvas.create_text(left, height - 7, text="0 min", anchor="w", fill=COLORS["muted"], font=("Segoe UI", 8))
+        canvas.create_text(right, height - 7, text=f"{duration_min:g} min", anchor="e", fill=COLORS["muted"], font=("Segoe UI", 8))
+        canvas.create_text(8, top + 4, text="PCU", anchor="w", fill=COLORS["muted"], font=("Segoe UI", 8))
+
+    def _save_dialog(self, extension: str, title: str) -> str:
+        return filedialog.asksaveasfilename(
+            parent=self,
+            title=title,
+            defaultextension=extension,
+            filetypes=((f"{extension[1:].upper()} files", f"*{extension}"),),
+            initialfile=f"flowline_demo{extension}",
+        )
+
+    def export_csv(self) -> None:
+        if not self.history:
+            return
+        filename = self._save_dialog(".csv", "Save traffic results")
+        if not filename:
+            return
+        try:
+            with Path(filename).open("w", newline="", encoding="utf-8-sig") as output:
+                writer = csv.writer(output)
+                writer.writerow(("time_s", "cell", "start_m", "end_m", "density_vehicles_per_m", "speed_km_per_h", "flow_pcu_per_h"))
+                for state in self.history:
+                    velocity, flow = traffic_sim._flow_from_density(state.density_vehicles_per_m, state.config)
+                    for cell, density in enumerate(state.density_vehicles_per_m):
+                        writer.writerow((
+                            float(state.time_s),
+                            cell + 1,
+                            float(state.cell_edges_m[cell]),
+                            float(state.cell_edges_m[cell + 1]),
+                            float(density),
+                            float(velocity[cell] * 3.6),
+                            float(flow[cell] * 3600),
+                        ))
+            messagebox.showinfo(APP_TITLE, "Your results are saved as a CSV file.", parent=self)
+        except OSError as error:
+            messagebox.showerror(APP_TITLE, f"Could not save the CSV file.\n\n{error}", parent=self)
+
+    def export_json(self) -> None:
+        if not self.history:
+            return
+        filename = self._save_dialog(".json", "Save full simulation")
+        if not filename:
+            return
+        payload = {
+            "format": "flowline-simulation/v1",
+            "scenario": "Constant inflow with a capacity restriction",
+            "configuration": {
+                "road_length_m": self.run_config.road_length_m,
+                "cell_size_m": self.run_config.cell_size_m,
+                "initial_density_vehicles_per_m": self.run_config.initial_density_vehicles_per_m,
+                "free_flow_speed_m_per_s": self.run_config.free_flow_speed_m_per_s,
+                "jam_density_vehicles_per_m": self.run_config.jam_density_vehicles_per_m,
+                "inflow_demand_pcu_per_hour": self.run_config.inflow_demand_vehicles_per_s * 3600,
+                "bottleneck_position_m_requested": self.run_config.bottleneck_position_m,
+                "bottleneck_position_m_on_grid": float(self.history[0].cell_edges_m[traffic_sim._bottleneck_index(self.run_config)]),
+                "capacity_reduction_percent": self.run_config.lane_reduction * 100,
+                "time_step_s": self.run_config.time_step_s,
+                "duration_s": float(self.history[-1].time_s),
+                "steps": len(self.history) - 1,
+            },
+            "frames": [
+                {
+                    "step": step,
+                    "time_s": float(state.time_s),
+                    "density_vehicles_per_m": [float(value) for value in state.density_vehicles_per_m],
+                }
+                for step, state in enumerate(self.history)
+            ],
+        }
+        try:
+            Path(filename).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            messagebox.showinfo(APP_TITLE, "Your full run and its settings are saved as JSON.", parent=self)
+        except OSError as error:
+            messagebox.showerror(APP_TITLE, f"Could not save the JSON file.\n\n{error}", parent=self)
+
+
+def main() -> None:
+    FlowlineApp().mainloop()
+
+
+if __name__ == "__main__":
+    main()
