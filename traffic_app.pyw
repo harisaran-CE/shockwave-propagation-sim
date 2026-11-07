@@ -642,29 +642,48 @@ class FlowlineApp(tk.Tk):
             position_m = float(edges[cell]) + (target_mass - previous_mass) / density
             position_m = min(float(edges[cell + 1]), max(float(edges[cell]), position_m))
             x = left + position_m / state.config.road_length_m * (right - left)
+            side = "upstream" if target_mass <= upstream_mass_at_closure else "downstream"
             if state.config.lane_reduction >= 1.0:
                 # Keep the full car body on its side of a complete closure.
                 if target_mass <= upstream_mass_at_closure:
-                    x = min(x, closure_x - 14)
+                    x = min(x, closure_x - 11)
                 else:
-                    x = max(x, closure_x + 14)
-            x = min(right - 9, max(left + 9, x))
-            positioned_markers.append((x, marker))
+                    x = max(x, closure_x + 11)
+            x = min(right - 6, max(left + 6, x))
+            positioned_markers.append((x, marker, side))
 
-        positioned_markers.sort()
-        last_car_x_by_lane = [float("-inf"), float("-inf")]
+        is_fully_blocked = state.config.lane_reduction >= 1.0
+        groups: dict[tuple[int, str], list[tuple[float, int, str]]] = {}
+        for positioned_marker in positioned_markers:
+            x, marker, side = positioned_marker
+            key = (marker % 2, side if is_fully_blocked else "road")
+            groups.setdefault(key, []).append((x, marker, side))
+
+        visible_markers = []
+        for (_lane, group_side), group in groups.items():
+            group.sort(key=lambda item: (item[0], item[1]))
+            minimum_x = closure_x + 11 if is_fully_blocked and group_side == "downstream" else left + 6
+            maximum_x = closure_x - 11 if is_fully_blocked and group_side == "upstream" else right - 6
+            gap = 18
+            adjusted_x = []
+            for index, (desired_x, _marker, _side) in enumerate(group):
+                adjusted_x.append(max(minimum_x, desired_x, adjusted_x[-1] + gap if adjusted_x else minimum_x))
+            if adjusted_x and adjusted_x[-1] > maximum_x:
+                adjusted_x[-1] = maximum_x
+                for index in range(len(adjusted_x) - 2, -1, -1):
+                    adjusted_x[index] = min(adjusted_x[index], adjusted_x[index + 1] - gap)
+            for (_desired_x, marker, side), x in zip(group, adjusted_x):
+                visible_markers.append((x, marker, side))
+
         marker_count = 0
-        for x, marker in positioned_markers:
+        for x, marker, _side in visible_markers:
             lane = marker % 2
-            if x - last_car_x_by_lane[lane] < 22:
-                continue
-            last_car_x_by_lane[lane] = x
             y = 68 if lane == 0 else 113
             body = "#64b5f6" if marker % 3 else "#f4f7fb"
-            canvas.create_rectangle(x - 9, y - 5, x + 9, y + 5, fill=body, outline="#182235", width=1)
-            canvas.create_rectangle(x - 4, y - 4, x + 4, y + 1, fill="#b9e2ff", outline="")
-            canvas.create_oval(x - 6, y + 3, x - 2, y + 7, fill="#111827", outline="")
-            canvas.create_oval(x + 3, y + 3, x + 7, y + 7, fill="#111827", outline="")
+            canvas.create_rectangle(x - 6, y - 4, x + 6, y + 4, fill=body, outline="#182235", width=1)
+            canvas.create_rectangle(x - 3, y - 3, x + 3, y, fill="#b9e2ff", outline="")
+            canvas.create_oval(x - 4, y + 2, x - 2, y + 4, fill="#111827", outline="")
+            canvas.create_oval(x + 2, y + 2, x + 4, y + 4, fill="#111827", outline="")
             marker_count += 1
 
         if state.config.lane_reduction > 0:

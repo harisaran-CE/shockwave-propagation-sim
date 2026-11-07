@@ -236,6 +236,7 @@
     }
     const restrictionIndex = Math.min(Math.round(config.position / CELL_SIZE), CELL_COUNT - 1);
     const massBeforeRestriction = restrictionIndex > 0 ? cumulativeMass[restrictionIndex - 1] : 0;
+    const isFullyBlocked = config.reduction >= 1;
     const positionedMarkers = [];
 
     for (const marker of markers) {
@@ -248,34 +249,52 @@
       if (density <= 0) continue;
       const x = Math.max(edges[cell], Math.min(edges[cell + 1], edges[cell] + (target - massBeforeCell) / density));
       let roadX = x;
-      if (config.reduction >= 1) {
-        // A complete restriction is impermeable in the model. Keep the whole
-        // illustrative car on the same side, even when it reaches the line.
+      const side = isFullyBlocked && target <= massBeforeRestriction ? 'upstream' : 'downstream';
+      if (isFullyBlocked) {
         roadX = target <= massBeforeRestriction
-          ? Math.min(roadX, config.position - 16)
-          : Math.max(roadX, config.position + 16);
+          ? Math.min(roadX, config.position - 13)
+          : Math.max(roadX, config.position + 13);
       }
-      roadX = Math.max(11, Math.min(989, roadX));
-      positionedMarkers.push({ x: roadX, lane: marker.id % 2, density, id: marker.id });
+      roadX = Math.max(6, Math.min(994, roadX));
+      positionedMarkers.push({ x: roadX, lane: marker.id % 2, side, density, id: marker.id });
     }
 
-    // Density is continuous, so tightly packed mass ranks can map to the
-    // same screen pixels. Keep a stable subset with visible car-sized gaps.
-    positionedMarkers.sort((a, b) => a.x - b.x || a.lane - b.lane);
-    const lastCarXByLane = [-Infinity, -Infinity];
+    // Keep every representative marker visible: shrink the glyphs to a
+    // plausible road scale and spread close centers along their lane.
+    const groups = new Map();
     for (const marker of positionedMarkers) {
-      if (marker.x - lastCarXByLane[marker.lane] < 21) continue;
-      lastCarXByLane[marker.lane] = marker.x;
+      const key = `${marker.lane}:${isFullyBlocked ? marker.side : 'road'}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(marker);
+    }
+    for (const [key, group] of groups) {
+      group.sort((a, b) => a.x - b.x || a.id - b.id);
+      const side = key.split(':')[1];
+      const minX = isFullyBlocked && side === 'downstream' ? config.position + 13 : 6;
+      const maxX = isFullyBlocked && side === 'upstream' ? config.position - 13 : 994;
+      const gap = 18;
+      for (let i = 0; i < group.length; i++) {
+        group[i].x = Math.max(minX, group[i].x, i ? group[i - 1].x + gap : minX);
+      }
+      if (group.length && group[group.length - 1].x > maxX) {
+        group[group.length - 1].x = maxX;
+        for (let i = group.length - 2; i >= 0; i--) {
+          group[i].x = Math.min(group[i].x, group[i + 1].x - gap);
+        }
+      }
+    }
+
+    for (const marker of positionedMarkers) {
       const y = marker.lane === 0 ? 79 : 133;
       const speedFraction = Math.max(0.04, 1 - marker.density / JAM_DENSITY);
       const tint = speedFraction < .28 ? '#f1b778' : (speedFraction < .58 ? '#9bd8ba' : '#88dfe0');
       ctx.save();
-      ctx.shadowColor = `${tint}55`; ctx.shadowBlur = 7;
-      ctx.fillStyle = tint; roundedRect(ctx, marker.x - 9, y - 7, 18, 13, 5); ctx.fill();
+      ctx.shadowColor = `${tint}55`; ctx.shadowBlur = 2;
+      ctx.fillStyle = tint; roundedRect(ctx, marker.x - 6, y - 5, 12, 10, 3); ctx.fill();
       ctx.shadowBlur = 0; ctx.fillStyle = '#21313b';
-      roundedRect(ctx, marker.x - 3.5, y - 5, 8, 9, 3); ctx.fill();
-      ctx.fillStyle = '#263744'; ctx.fillRect(marker.x - 6, y - 8, 4, 2); ctx.fillRect(marker.x + 3, y - 8, 4, 2);
-      ctx.fillRect(marker.x - 6, y + 6, 4, 2); ctx.fillRect(marker.x + 3, y + 6, 4, 2);
+      roundedRect(ctx, marker.x - 2.5, y - 3.5, 5, 7, 2); ctx.fill();
+      ctx.fillStyle = '#263744'; ctx.fillRect(marker.x - 4, y - 6, 3, 1.5); ctx.fillRect(marker.x + 1, y - 6, 3, 1.5);
+      ctx.fillRect(marker.x - 4, y + 4.5, 3, 1.5); ctx.fillRect(marker.x + 1, y + 4.5, 3, 1.5);
       ctx.restore();
     }
   }
