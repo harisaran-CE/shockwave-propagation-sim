@@ -630,7 +630,7 @@ class FlowlineApp(tk.Tk):
         bottleneck = traffic_sim._bottleneck_index(state.config)
         closure_x = left + float(edges[bottleneck]) / state.config.road_length_m * (right - left)
         upstream_mass_at_closure = cumulative_mass[bottleneck - 1] if bottleneck > 0 else 0.0
-        marker_count = 0
+        positioned_markers = []
         for target_mass, marker in marker_ranks:
             if target_mass < 0.0 or target_mass > total_mass + 1e-8:
                 continue
@@ -645,11 +645,21 @@ class FlowlineApp(tk.Tk):
             if state.config.lane_reduction >= 1.0:
                 # Keep the full car body on its side of a complete closure.
                 if target_mass <= upstream_mass_at_closure:
-                    x = min(x, closure_x - 10)
+                    x = min(x, closure_x - 14)
                 else:
-                    x = max(x, closure_x + 10)
+                    x = max(x, closure_x + 14)
             x = min(right - 9, max(left + 9, x))
-            y = 68 if marker % 2 == 0 else 113
+            positioned_markers.append((x, marker))
+
+        positioned_markers.sort()
+        last_car_x_by_lane = [float("-inf"), float("-inf")]
+        marker_count = 0
+        for x, marker in positioned_markers:
+            lane = marker % 2
+            if x - last_car_x_by_lane[lane] < 22:
+                continue
+            last_car_x_by_lane[lane] = x
+            y = 68 if lane == 0 else 113
             body = "#64b5f6" if marker % 3 else "#f4f7fb"
             canvas.create_rectangle(x - 9, y - 5, x + 9, y + 5, fill=body, outline="#182235", width=1)
             canvas.create_rectangle(x - 4, y - 4, x + 4, y + 1, fill="#b9e2ff", outline="")
