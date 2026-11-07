@@ -138,6 +138,40 @@ the portable user package, see [`USER_GUIDE.md`](./USER_GUIDE.md).
 To rebuild the Windows release, follow [`PUBLISHING.md`](./PUBLISHING.md) and
 run [`build_windows.ps1`](./build_windows.ps1).
 
+## Microscopic model prototype
+
+[`traffic_micro.py`](./traffic_micro.py) is an isolated, exploratory
+vehicle-level prototype. It models seeded initial fleets of passenger cars,
+motorcycles, auto-rickshaws, buses, and heavy goods vehicles on a straight,
+fixed-lane road, with an Intelligent Driver Model (IDM) car-following update,
+sampled reaction delays, and reproducible hard-braking events. Brake-event
+rates and durations, vehicle proportions, and driver-parameter ranges are
+illustrative, not calibrated to a specific road or dataset.
+Reaction delay uses each driver's sampled perception history; hard braking is
+sampled from a seeded per-vehicle event rate and logged with its applied
+duration. If a step would create overlap, the model records a contact and
+closing speed, then clamps the vehicles to touching; it does not model impact
+forces, damage, or crash risk.
+
+The prototype does not replace or change the LWR engine, and is not wired into
+the original applications. It does not yet model arrivals, intersections,
+lane changes, or overtaking. Braking and reaction-delay parameters are
+exploratory placeholders; calibrate and validate all behavior against observed
+traffic data before describing the model as research-calibrated.
+
+Run its focused tests with `python -m unittest -v test_traffic_micro`. To
+open the standalone visual preview, run `python traffic_micro_app.pyw`. The
+preview can regenerate seeded runs, play/pause, and scrub saved frames. It does
+not change the existing desktop or browser applications. To inspect a
+reproducible scenario from Python:
+
+```python
+import traffic_micro
+
+states = traffic_micro.run_simulation(duration_s=30, seed=7)
+print(traffic_micro.metrics_snapshot(states[-1]))
+```
+
 ## Numerical method
 
 For cell `i`, width `Δxᵢ`, and interface fluxes `Fᵢ₋₁/₂` and `Fᵢ₊₁/₂`, the
