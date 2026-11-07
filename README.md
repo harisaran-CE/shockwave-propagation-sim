@@ -133,7 +133,8 @@ The Windows desktop app is called Flowline Traffic Studio. Users can run
 `FlowlineTrafficStudio.exe` without installing Python or using a terminal. The
 app has a guided demo, an animated traffic-density view, a build-up chart,
 plain-language status, playback speed and timeline controls, and CSV/JSON
-exports. For the portable user package, see [`USER_GUIDE.md`](./USER_GUIDE.md).
+exports. Users can vary arrivals randomly around a selected mean demand. For
+the portable user package, see [`USER_GUIDE.md`](./USER_GUIDE.md).
 To rebuild the Windows release, follow [`PUBLISHING.md`](./PUBLISHING.md) and
 run [`build_windows.ps1`](./build_windows.ps1).
 

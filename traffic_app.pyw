@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import bisect
 import json
+import secrets
 import time
 from pathlib import Path
 import tkinter as tk
@@ -15,6 +16,23 @@ import traffic_sim
 
 
 APP_TITLE = "Flowline Traffic Studio"
+
+
+class _XorShift32:
+    """Small reproducible random stream shared with the browser build."""
+
+    def __init__(self, seed: int) -> None:
+        self.state = seed & 0xFFFFFFFF or 1
+
+    def random(self) -> float:
+        value = self.state
+        value ^= (value << 13) & 0xFFFFFFFF
+        value ^= value >> 17
+        value ^= (value << 5) & 0xFFFFFFFF
+        self.state = value & 0xFFFFFFFF or 1
+        return self.state / 0x100000000
+
+
 COLORS = {
     "page": "#f4f7fb",
     "surface": "#ffffff",
@@ -52,6 +70,9 @@ class FlowlineApp(tk.Tk):
 
         self.speed_var = tk.StringVar(value="1x")
         self.demand_var = tk.StringVar(value="1200")
+        self.inflow_variability_var = tk.StringVar(value="25")
+        self.run_inflow_variability_percent = 25
+        self.run_inflow_seed = 0
         self.closure_position_var = tk.StringVar(value="805")
         self.closure_reduction_var = tk.StringVar(value="100% — fully closed")
         self.duration_var = tk.StringVar(value="3 minutes")
@@ -190,6 +211,8 @@ class FlowlineApp(tk.Tk):
         )
         self._scenario_field(scenario, "Arriving traffic", "Passenger-car units per hour", self.demand_var,
                              from_=0, to=3000, increment=50, suffix="PCU/h")
+        self._scenario_field(scenario, "Inflow variability", "Random range around the average each second", self.inflow_variability_var,
+                             from_=0, to=50, increment=5, suffix="±%")
         self._scenario_field(scenario, "Road restriction at", "Distance from the start", self.closure_position_var,
                              from_=50, to=950, increment=5, suffix="m")
 
@@ -380,6 +403,9 @@ class FlowlineApp(tk.Tk):
             raise ValueError("Arriving traffic must be between 0 and 3,000 PCU/h.")
         if not 50 <= position <= 950:
             raise ValueError("Choose a restriction location between 50 m and 950 m.")
+        variability = int(self.inflow_variability_var.get())
+        if not 0 <= variability <= 50:
+            raise ValueError("Inflow variability must be between 0% and 50%.")
         config = traffic_sim.SimulationConfig(
             inflow_demand_vehicles_per_s=demand / 3600.0,
             bottleneck_position_m=position,
@@ -410,14 +436,31 @@ class FlowlineApp(tk.Tk):
             return
 
         self.run_config = config
+        self.run_inflow_variability_percent = int(self.inflow_variability_var.get())
+        self.run_inflow_seed = secrets.randbits(32) or 1
         self.run_button.configure(state="disabled", text="Running…")
         self.progress_var.set(f"Calculating your {duration_minutes}-minute scenario…")
         self.update_idletasks()
         try:
+            random_stream = _XorShift32(self.run_inflow_seed)
+            variability = self.run_inflow_variability_percent / 100.0
+            sample_steps = max(1, round(1.0 / config.time_step_s))
+
+            def sample_inflow_demand() -> float:
+                return config.inflow_demand_vehicles_per_s * (
+                    1.0 + (2.0 * random_stream.random() - 1.0) * variability
+                )
+
             state = traffic_sim.initialize_state(config)
+            state.inflow_demand_vehicles_per_s = np.longdouble(str(sample_inflow_demand()))
             states = [state]
             for step in range(self.total_steps):
-                state = traffic_sim.advance_state(state)
+                state = traffic_sim.advance_state(
+                    state,
+                    inflow_demand_vehicles_per_s=state.inflow_demand_vehicles_per_s,
+                )
+                if (step + 1) % sample_steps == 0 and step + 1 < self.total_steps:
+                    state.inflow_demand_vehicles_per_s = np.longdouble(str(sample_inflow_demand()))
                 states.append(state)
                 if step and step % 120 == 0:
                     self.progress_var.set(f"Calculating… {step * config.time_step_s:.0f} of {duration_minutes * 60} seconds")
@@ -528,6 +571,12 @@ class FlowlineApp(tk.Tk):
 
         first = self.history[lower]
         second = self.history[upper]
+        first_inflow = first.inflow_demand_vehicles_per_s
+        second_inflow = second.inflow_demand_vehicles_per_s
+        if first_inflow is None:
+            first_inflow = np.longdouble(str(first.config.inflow_demand_vehicles_per_s))
+        if second_inflow is None:
+            second_inflow = np.longdouble(str(second.config.inflow_demand_vehicles_per_s))
         return traffic_sim.SimulationState(
             time_s=first.time_s + (second.time_s - first.time_s) * fraction,
             density_vehicles_per_m=first.density_vehicles_per_m + (
@@ -538,6 +587,7 @@ class FlowlineApp(tk.Tk):
             cumulative_inflow_vehicles=first.cumulative_inflow_vehicles + (
                 second.cumulative_inflow_vehicles - first.cumulative_inflow_vehicles
             ) * fraction,
+            inflow_demand_vehicles_per_s=first_inflow + (second_inflow - first_inflow) * fraction,
         )
 
     def _render_frame(
@@ -779,7 +829,7 @@ class FlowlineApp(tk.Tk):
         try:
             with Path(filename).open("w", newline="", encoding="utf-8-sig") as output:
                 writer = csv.writer(output)
-                writer.writerow(("time_s", "cell", "start_m", "end_m", "density_vehicles_per_m", "speed_km_per_h", "flow_pcu_per_h"))
+                writer.writerow(("time_s", "cell", "start_m", "end_m", "density_vehicles_per_m", "speed_km_per_h", "flow_pcu_per_h", "inflow_demand_vehicles_per_s"))
                 for state in self.history:
                     velocity, flow = traffic_sim._flow_from_density(state.density_vehicles_per_m, state.config)
                     for cell, density in enumerate(state.density_vehicles_per_m):
@@ -791,6 +841,7 @@ class FlowlineApp(tk.Tk):
                             float(density),
                             float(velocity[cell] * 3.6),
                             float(flow[cell] * 3600),
+                            float(state.inflow_demand_vehicles_per_s or 0),
                         ))
             messagebox.showinfo(APP_TITLE, "Your results are saved as a CSV file.", parent=self)
         except OSError as error:
@@ -804,7 +855,11 @@ class FlowlineApp(tk.Tk):
             return
         payload = {
             "format": "flowline-simulation/v1",
-            "scenario": "Constant inflow with a capacity restriction",
+            "scenario": (
+                "Variable inflow around a mean with a capacity restriction"
+                if self.run_inflow_variability_percent
+                else "Constant inflow with a capacity restriction"
+            ),
             "configuration": {
                 "road_length_m": self.run_config.road_length_m,
                 "cell_size_m": self.run_config.cell_size_m,
@@ -812,6 +867,10 @@ class FlowlineApp(tk.Tk):
                 "free_flow_speed_m_per_s": self.run_config.free_flow_speed_m_per_s,
                 "jam_density_vehicles_per_m": self.run_config.jam_density_vehicles_per_m,
                 "inflow_demand_pcu_per_hour": self.run_config.inflow_demand_vehicles_per_s * 3600,
+                "inflow_variability_percent": self.run_inflow_variability_percent,
+                "inflow_random_seed": self.run_inflow_seed,
+                "inflow_random_generator": "xorshift32",
+                "inflow_resample_interval_s": 1.0,
                 "bottleneck_position_m_requested": self.run_config.bottleneck_position_m,
                 "bottleneck_position_m_on_grid": float(self.history[0].cell_edges_m[traffic_sim._bottleneck_index(self.run_config)]),
                 "capacity_reduction_percent": self.run_config.lane_reduction * 100,
@@ -823,6 +882,8 @@ class FlowlineApp(tk.Tk):
                 {
                     "step": step,
                     "time_s": float(state.time_s),
+                    "inflow_demand_vehicles_per_s": float(state.inflow_demand_vehicles_per_s or 0),
+                    "cumulative_inflow_pcu": float(state.cumulative_inflow_vehicles),
                     "density_vehicles_per_m": [float(value) for value in state.density_vehicles_per_m],
                 }
                 for step, state in enumerate(self.history)

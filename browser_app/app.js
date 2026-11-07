@@ -7,6 +7,7 @@
   const FREE_SPEED = 22.22222;
   const JAM_DENSITY = 0.142857;
   const DT = 0.25;
+  const INFLOW_SAMPLE_STEPS = Math.round(1 / DT);
   const DEFAULT_INFLOW = 1200 / 3600;
   const CRITICAL_DENSITY = JAM_DENSITY / 2;
   const CAPACITY = CRITICAL_DENSITY * FREE_SPEED * (1 - CRITICAL_DENSITY / JAM_DENSITY);
@@ -21,6 +22,7 @@
     time: $('timeReadout'), density: $('densityReadout'), speed: $('speedReadout'), mass: $('massReadout'),
     status: $('sceneStatus'), play: $('playButton'), playIcon: $('playIcon'), playText: $('playText'),
     reset: $('resetButton'), speedSelect: $('speedSelect'), scenario: $('scenarioSelect'), hint: $('scenarioHint'),
+    variability: $('inflowVariation'), variabilityValue: $('inflowVariationValue'),
     duration: $('durationSelect'), scrubber: $('scrubber'), progress: $('progressLabel'),
     csv: $('csvButton'), json: $('jsonButton')
   };
@@ -28,6 +30,7 @@
   let config = scenarioConfig();
   let frames = [];
   let frameIndex = 0;
+  let inflowSeed = 0;
   let playbackPosition = 0;
   let lastPlaybackTime = 0;
   let displayFrame = null;
@@ -38,12 +41,30 @@
   function scenarioConfig() {
     switch (ui.scenario.value) {
       case 'partial':
-        return { inflow: DEFAULT_INFLOW, reduction: 0.5, position: 805, label: 'One lane restricted' };
+        return { inflow: DEFAULT_INFLOW, reduction: 0.5, position: 805, label: 'One lane restricted', variability: Number(ui.variability.value) / 100 };
       case 'busy':
-        return { inflow: 0.45, reduction: 0, position: 805, label: 'Busy road, no blockage' };
+        return { inflow: 0.45, reduction: 0, position: 805, label: 'Busy road, no blockage', variability: Number(ui.variability.value) / 100 };
       default:
-        return { inflow: DEFAULT_INFLOW, reduction: 1, position: 805, label: 'Road fully blocked' };
+        return { inflow: DEFAULT_INFLOW, reduction: 1, position: 805, label: 'Road fully blocked', variability: Number(ui.variability.value) / 100 };
     }
+  }
+
+  function makeRunSeed() {
+    const value = new Uint32Array(1);
+    if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(value);
+    else value[0] = Date.now() >>> 0;
+    return value[0] || 1;
+  }
+
+  function makeSeededRandom(seed) {
+    let state = seed >>> 0 || 1;
+    return () => {
+      state ^= state << 13;
+      state ^= state >>> 17;
+      state ^= state << 5;
+      state >>>= 0;
+      return state / 0x100000000;
+    };
   }
 
   function flowAt(k) { return k * FREE_SPEED * (1 - k / JAM_DENSITY); }
@@ -63,10 +84,10 @@
     return { demand, supply };
   }
 
-  function advance(density) {
+  function advance(density, inflowDemand = config.inflow) {
     const { demand, supply } = demandSupply(density);
     const flux = new Float64Array(CELL_COUNT + 1);
-    flux[0] = Math.min(config.inflow, supply[0]);
+    flux[0] = Math.min(inflowDemand, supply[0]);
     for (let i = 1; i < CELL_COUNT; i++) flux[i] = Math.min(demand[i - 1], supply[i]);
     flux[CELL_COUNT] = demand[CELL_COUNT - 1];
     const bottleneck = Math.min(Math.round(config.position / CELL_SIZE), CELL_COUNT - 1);
@@ -79,14 +100,14 @@
     return { density: next, inflowFlux: flux[0] };
   }
 
-  function snapshot(density, time, cumulativeInflow = 0) {
+  function snapshot(density, time, cumulativeInflow = 0, inflowDemand = config.inflow) {
     let mass = 0, densitySum = 0, speedSum = 0;
     for (let i = 0; i < CELL_COUNT; i++) {
       mass += density[i] * widths[i];
       densitySum += density[i];
       speedSum += FREE_SPEED * Math.max(0, 1 - density[i] / JAM_DENSITY);
     }
-    return { time, density, mass, meanDensity: densitySum / CELL_COUNT, meanSpeed: speedSum / CELL_COUNT, cumulativeInflow };
+    return { time, density, mass, meanDensity: densitySum / CELL_COUNT, meanSpeed: speedSum / CELL_COUNT, cumulativeInflow, inflowDemand };
   }
 
   function buildRun() {
@@ -94,11 +115,18 @@
     const steps = Math.round(Number(ui.duration.value) / DT);
     let density = new Float64Array(CELL_COUNT).fill(0.02);
     let cumulativeInflow = 0;
+    inflowSeed = makeRunSeed();
+    const random = makeSeededRandom(inflowSeed);
+    let inflowDemand = config.inflow;
     frames = new Array(steps + 1);
     for (let step = 0; step <= steps; step++) {
-      frames[step] = snapshot(density, step * DT, cumulativeInflow);
+      if (step % INFLOW_SAMPLE_STEPS === 0) {
+        const variation = (random() * 2 - 1) * config.variability;
+        inflowDemand = config.inflow * (1 + variation);
+      }
+      frames[step] = snapshot(density, step * DT, cumulativeInflow, inflowDemand);
       if (step < steps) {
-        const update = advance(density);
+        const update = advance(density, inflowDemand);
         density = update.density;
         cumulativeInflow += DT * update.inflowFlux;
       }
@@ -142,7 +170,8 @@
     return snapshot(
       density,
       first.time + (second.time - first.time) * fraction,
-      first.cumulativeInflow + (second.cumulativeInflow - first.cumulativeInflow) * fraction
+      first.cumulativeInflow + (second.cumulativeInflow - first.cumulativeInflow) * fraction,
+      first.inflowDemand + (second.inflowDemand - first.inflowDemand) * fraction
     );
   }
 
@@ -347,11 +376,11 @@
   }
 
   function exportCsv() {
-    const rows = ['time_s,cell_index,x_start_m,x_end_m,density_vehicles_per_m,speed_m_per_s,flow_vehicles_per_s,vehicle_mass_pcu'];
+    const rows = ['time_s,cell_index,x_start_m,x_end_m,density_vehicles_per_m,speed_m_per_s,flow_vehicles_per_s,vehicle_mass_pcu,inflow_demand_vehicles_per_s'];
     for (const frame of frames) {
       for (let i = 0; i < CELL_COUNT; i++) {
         const density = frame.density[i];
-        rows.push(`${frame.time.toFixed(2)},${i},${edges[i].toFixed(2)},${edges[i + 1].toFixed(2)},${density.toFixed(8)},${(FREE_SPEED * Math.max(0, 1 - density / JAM_DENSITY)).toFixed(8)},${flowAt(density).toFixed(8)},${(density * widths[i]).toFixed(8)}`);
+        rows.push(`${frame.time.toFixed(2)},${i},${edges[i].toFixed(2)},${edges[i + 1].toFixed(2)},${density.toFixed(8)},${(FREE_SPEED * Math.max(0, 1 - density / JAM_DENSITY)).toFixed(8)},${flowAt(density).toFixed(8)},${(density * widths[i]).toFixed(8)},${frame.inflowDemand.toFixed(8)}`);
       }
     }
     download('flowline-traffic-run.csv', rows.join('\n'), 'text/csv;charset=utf-8');
@@ -361,8 +390,8 @@
     const result = {
       app: 'Flowline Traffic Flow Studio', model: 'LWR finite-volume / Greenshields',
       note: 'Road scene car markers are illustrative. Playback speed does not change simulation physics.',
-      parameters: { road_length_m: ROAD_LENGTH, cell_size_m: CELL_SIZE, free_flow_speed_m_per_s: FREE_SPEED, jam_density_vehicles_per_m: JAM_DENSITY, time_step_s: DT, inflow_vehicles_per_s: config.inflow, bottleneck_position_m: config.position, lane_reduction: config.reduction, scenario: config.label },
-      frames: frames.map(frame => ({ time_s: frame.time, total_vehicle_mass_pcu: frame.mass, mean_density_pcu_per_km: frame.meanDensity * 1000, mean_speed_km_per_h: frame.meanSpeed * 3.6, density_vehicles_per_m_by_cell: Array.from(frame.density) }))
+      parameters: { road_length_m: ROAD_LENGTH, cell_size_m: CELL_SIZE, free_flow_speed_m_per_s: FREE_SPEED, jam_density_vehicles_per_m: JAM_DENSITY, time_step_s: DT, inflow_vehicles_per_s: config.inflow, inflow_mean_vehicles_per_s: config.inflow, inflow_variability_percent: config.variability * 100, inflow_random_seed: inflowSeed, inflow_random_generator: 'xorshift32', inflow_resample_interval_s: 1, bottleneck_position_m: config.position, lane_reduction: config.reduction, scenario: config.label },
+      frames: frames.map(frame => ({ time_s: frame.time, inflow_demand_vehicles_per_s: frame.inflowDemand, cumulative_inflow_pcu: frame.cumulativeInflow, total_vehicle_mass_pcu: frame.mass, mean_density_pcu_per_km: frame.meanDensity * 1000, mean_speed_km_per_h: frame.meanSpeed * 3.6, density_vehicles_per_m_by_cell: Array.from(frame.density) }))
     };
     download('flowline-traffic-run.json', JSON.stringify(result), 'application/json');
   }
@@ -380,6 +409,13 @@
     }
   });
   ui.speedSelect.addEventListener('change', () => { if (playing) lastPlaybackTime = 0; });
+  ui.variability.addEventListener('input', () => { ui.variabilityValue.textContent = `±${ui.variability.value}%`; });
+  ui.variability.addEventListener('change', () => {
+    if (frames.length) {
+      stopPlayback(); buildRun();
+      ui.playText.textContent = 'Run simulation'; ui.playIcon.textContent = 'â–¶';
+    }
+  });
   ui.scenario.addEventListener('change', () => {
     stopPlayback(); frames = []; frameIndex = 0; playbackPosition = 0; displayFrame = null;
     const hints = {
