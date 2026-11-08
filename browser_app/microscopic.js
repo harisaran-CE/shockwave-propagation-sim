@@ -4,6 +4,7 @@
   const ROAD_LENGTH = 500;
   const LANE_WIDTH_M = 4;
   const LATERAL_CLEARANCE_M = 0.15;
+  const GEOMETRY_EPSILON_M = 1e-6;
   const SUBLANE_COUNT = 4;
   const STEP = 0.025;
   const ENTRY_SPILLBACK_DURATION = 3;
@@ -209,7 +210,7 @@
       if (other.id === exceptId) continue;
       const lateralGap = Math.abs(other.lateralPositionM - subjectLateral)
         - (other.width + width) / 2;
-      if (lateralGap >= LATERAL_CLEARANCE_M) continue;
+      if (lateralGap >= LATERAL_CLEARANCE_M - GEOMETRY_EPSILON_M) continue;
       const isAhead = other.position > position
         || (other.position === position && other.id < exceptId);
       if (isAhead && (!leader || other.position < leader.position)) leader = other;
