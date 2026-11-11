@@ -64,14 +64,14 @@
       </div>
 
       <div class="micro-event" id="microEvent" aria-live="polite">Vehicles are ready. Press Play to watch them move and pass.</div>
-      <section class="vehicle-inspector" aria-label="Selected vehicle inspector">
-        <div class="inspector-head">
+      <details class="vehicle-inspector" aria-label="Selected vehicle inspector" open>
+        <summary class="inspector-head">
           <div>
             <div class="section-kicker">VEHICLE INSPECTOR <span id="microSelectionCount">0 SELECTED</span></div>
             <h2 id="microInspectorTitle">Select a vehicle on the road</h2>
           </div>
           <button class="quiet-button inspector-clear" id="microClearSelection" type="button" disabled>Clear</button>
-        </div>
+        </summary>
         <p class="inspector-help" id="microInspectorHelp">Drag across the road to select one or more vehicles. Details are shown from each selected vehicle's forward view.</p>
         <div class="inspector-empty" id="microInspectorEmpty">No vehicle selected.</div>
         <div class="inspector-content" id="microInspectorContent" hidden>
@@ -105,7 +105,7 @@
             <div class="field-hint" id="microSpeedAvailability" aria-live="polite">Select a vehicle to see safe speed options.</div>
           </div>
         </div>
-      </section>
+      </details>
       <div class="micro-controls">
         <button class="primary-button" id="microPlay" type="button"><span id="microPlayIcon" aria-hidden="true">▶</span><span id="microPlayText">Play</span></button>
         <button class="quiet-button" id="microReset" type="button">Reset run</button>
