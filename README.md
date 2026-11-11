@@ -163,6 +163,15 @@ vehicle simulation; it does not run or compare against LWR. It supports seeded
 arrivals, several vehicle types, gap-checked lane changes, overtaking, one-lane
 restrictions, and full road closures. Its driving rules are illustrative, not
 calibrated. Intersections and signals are not modeled.
+Drag-select vehicles in the road view to inspect their type, speed, lane, and
+forward congestion. Selected vehicles can receive a requested travel speed,
+with requested travel speeds. The vehicle tries to travel at that speed,
+but safe following distance, barriers, and lane rules always take priority.
+Choices are based on the vehicle's normal desired speed with a small soft-limit
+allowance, not an unrestricted high-speed target; choices currently extend to
+120 km/h. Playback slows to 0.5x
+while a speed is being edited, and multiple selected vehicles can be edited
+together.
 
 Run its focused tests with `python -m unittest -v test_traffic_micro`. To
 open the Python visual preview, run `python traffic_micro_app.pyw`; it can
@@ -177,10 +186,11 @@ can resume if the barrier moves away. Drivers look at least 220 m ahead for
 lane closures and attempt to merge when there is a safe gap. Each physical lane is
 drawn with four marked paths; vehicles can move between paths only when their
 full width and length have room, with a clear front and rear gap. Passing
-requires a clear closing speed and useful gain; drivers wait before returning
-to their old lane. Only a vehicle behind slower traffic can request a pass; a
-leader does not brake or move aside for a follower. All vehicles update from
-the same traffic snapshot. Moves between paths take about 2.4 seconds. Runs
+requires a clear closing speed and useful gain. Drivers wait before returning
+to their old lane. Only a vehicle behind
+slower traffic can request a pass; a leader does not brake or move aside for a
+follower. All vehicles update from the same traffic snapshot. Moves between
+paths take about 2.4 seconds. Runs
 can be downloaded as CSV or JSON, including samples of
 the barrier position. To inspect a reproducible Python run:
 
@@ -241,3 +251,6 @@ units, PCU equivalence, calibration data, lane count, bottleneck geometry,
 boundary assumptions, standards edition, and convergence under grid/time-step
 refinement. Preserve the raw configuration and terminal output with every
 experiment.
+CSV and JSON exports preserve the current vehicle selection: CSV includes
+selected vehicle count/IDs, while JSON includes selected vehicle records with a
+`selected` marker.

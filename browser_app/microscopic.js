@@ -8,7 +8,6 @@
   const SUBLANE_COUNT = 4;
   const STEP = 0.025;
   const ENTRY_SPILLBACK_DURATION = 3;
-  const RANDOM_SEED = 41;
   const LANE_CHANGE_DURATION = 2.4;
   const MIN_LANE_GAIN = 0.9;
   const MIN_PASSING_CLOSING_SPEED = 1.2;
@@ -18,6 +17,10 @@
   const COOLDOWN_STEPS = 80;
   const CLOSURE_LOOKAHEAD = 8;
   const CLOSURE_MIN_LOOKAHEAD = 220;
+  const SPEED_TARGET_OPTIONS_KMH = [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
+  const SPEED_TARGET_MAX_KMH = 120;
+  const SPEED_TARGET_CONGESTION_MARGIN_KMH = 15;
+  const SPEED_TARGET_SOFT_LIMIT_MARGIN_KMH = 15;
   const ARRIVAL_MIX = [
     ['car', 0.45], ['motorcycle', 0.24], ['rickshaw', 0.13], ['bus', 0.08], ['truck', 0.10]
   ];
@@ -32,6 +35,22 @@
     laneChanges: $('microLaneChanges'),
     meanSpeed: $('microMeanSpeed'),
     event: $('microEvent'),
+    selectionCount: $('microSelectionCount'),
+    inspectorTitle: $('microInspectorTitle'),
+    inspectorHelp: $('microInspectorHelp'),
+    inspectorEmpty: $('microInspectorEmpty'),
+    inspectorContent: $('microInspectorContent'),
+    clearSelection: $('microClearSelection'),
+    selectedType: $('microSelectedType'),
+    selectedSpeed: $('microSelectedSpeed'),
+    selectedLane: $('microSelectedLane'),
+    selectedGap: $('microSelectedGap'),
+    selectedLeader: $('microSelectedLeader'),
+    selectedStatus: $('microSelectedStatus'),
+    selectedSpeedCap: $('microSelectedSpeedCap'),
+    applySpeedCap: $('microApplySpeedCap'),
+    cancelSpeedCap: $('microCancelSpeedCap'),
+    speedAvailability: $('microSpeedAvailability'),
     play: $('microPlay'),
     playIcon: $('microPlayIcon'),
     playText: $('microPlayText'),
@@ -47,6 +66,9 @@
     variationValue: $('microVariationValue'),
     speedLimit: $('microSpeedLimit'),
     duration: $('microDuration'),
+    seed: $('microSeed'),
+    timeline: $('microTimeline'),
+    timelineTime: $('microTimelineTime'),
     csv: $('microCsv'),
     json: $('microJson')
   };
@@ -93,6 +115,12 @@
   let pixelRatio = 1;
   let barrierPositionM = Number(ui.barrierPosition.value);
   let draggingBarrier = false;
+  let viewFrameIndex = null;
+  let replayingHistory = false;
+  let replayAccumulator = 0;
+  const selectedVehicleIds = new Set();
+  let speedEditActive = false;
+  let selectionDrag = null;
 
   function seededRandom(seed) {
     let value = seed >>> 0 || 1;
@@ -126,17 +154,58 @@
       cooldown: 0, returnLane: null, passingTargetId: null, passedTarget: false,
       passedTargetTime: null,
       waitingForMerge: false,
+      lateralChangeDuration: LANE_CHANGE_DURATION,
       returnLateralPositionM: null,
       laneChangeFrom: null, laneChangeElapsed: 0, previousLaneChangeElapsed: 0,
       lateralPositionM, previousLateralPositionM: lateralPositionM, lateralSpeedMps: 0,
       lateralChangeFromM: null, lateralChangeTargetM: null,
       lateralChangeElapsed: 0, previousLateralChangeElapsed: 0,
-      previousPosition: position, acceleration: 0
+      previousPosition: position, acceleration: 0, requestedSpeedKmh: null
     };
   }
 
+  function requestedSpeed(vehicle) {
+    return vehicle.requestedSpeedKmh === null
+      ? vehicle.desiredSpeed : vehicle.requestedSpeedKmh / 3.6;
+  }
+
+  function vehicleLeader(vehicle, vehicles = state.vehicles) {
+    return laneNeighbors(vehicles, vehicle.lane, vehicle.position, vehicle.id).leader;
+  }
+
+  function safeSpeedFor(vehicle) {
+    const leader = vehicleLeader(vehicle);
+    const unconstrainedCeiling = SPEED_TARGET_MAX_KMH;
+    if (!leader) return unconstrainedCeiling;
+    const gap = Math.max(0, leader.position - leader.length / 2
+      - vehicle.position - vehicle.length / 2);
+    if (leader.kind === 'barrier') {
+      const available = Math.max(0, gap - vehicle.minimumGap);
+      const responseTime = vehicle.headway + vehicle.reaction;
+      const discriminant = responseTime ** 2 + 2 * available / vehicle.deceleration;
+      return Math.max(0, Math.min(unconstrainedCeiling,
+        (-responseTime + Math.sqrt(discriminant)) * vehicle.deceleration * 3.6
+          + SPEED_TARGET_CONGESTION_MARGIN_KMH));
+    }
+    return Math.max(0, Math.min(unconstrainedCeiling,
+      (leader.speed + Math.max(0, gap - vehicle.minimumGap)
+        / Math.max(0.5, vehicle.headway)) * 3.6 + SPEED_TARGET_CONGESTION_MARGIN_KMH));
+  }
+
+  function speedOptionsForSelection() {
+    const selected = state.vehicles.filter((vehicle) => selectedVehicleIds.has(vehicle.id));
+    return SPEED_TARGET_OPTIONS_KMH.map((speed) => ({
+      speed,
+      available: selected.length > 0 && selected.every((vehicle) =>
+        speed <= safeSpeedFor(vehicle) + 0.1
+          && speed <= vehicle.desiredSpeed * 3.6 + SPEED_TARGET_SOFT_LIMIT_MARGIN_KMH
+      )
+    }));
+  }
+
   function createState() {
-    const random = seededRandom(RANDOM_SEED);
+    const seed = Number(ui.seed.value);
+    const random = seededRandom(seed);
     const vehicles = initialFleet
       .map(([kind, lane, position], id) => createVehicle(id, kind, lane, position, random))
       .filter((vehicle) => !barrierBlocksLane(vehicle.lane)
@@ -152,11 +221,13 @@
       slowBus.desiredSpeed = 8.5;
     }
     return {
-      time: 0, vehicles, overtakes: 0, laneChanges: 0, preventedContacts: 0,
+      time: 0, seed, vehicles, overtakes: 0, laneChanges: 0, preventedContacts: 0,
       exited: 0, endReached: false, entryBlockedSince: null,
       nextId: initialFleet.length, random,
       nextArrival: 0,
       events: [],
+      frames: [],
+      eventLog: [],
       eventText: 'Ready. Change the settings or press Play to begin.'
     };
   }
@@ -197,7 +268,8 @@
   }
 
   function laneNeighbors(
-    vehicles, lane, position, exceptId, lateralPositionM = null, subjectWidth = null
+    vehicles, lane, position, exceptId, lateralPositionM = null, subjectWidth = null,
+    ignoredId = null
   ) {
     let leader = null;
     let follower = null;
@@ -207,7 +279,7 @@
       ?? lane * LANE_WIDTH_M;
     const width = subjectWidth ?? subject?.width ?? profiles.car.width[0];
     for (const other of vehicles) {
-      if (other.id === exceptId) continue;
+      if (other.id === exceptId || other.id === ignoredId) continue;
       const lateralGap = Math.abs(other.lateralPositionM - subjectLateral)
         - (other.width + width) / 2;
       if (lateralGap >= LATERAL_CLEARANCE_M - GEOMETRY_EPSILON_M) continue;
@@ -242,7 +314,8 @@
   }
 
   function lateralPathIsClear(
-    vehicle, targetLane, targetLateralPositionM, duration = LANE_CHANGE_DURATION
+    vehicle, targetLane, targetLateralPositionM, duration = LANE_CHANGE_DURATION,
+    passingTargetId = null
   ) {
     const startLateralPositionM = vehicle.lateralPositionM;
     const sampleCount = 12;
@@ -261,7 +334,7 @@
         let otherLateralPositionM = other.lateralPositionM;
         if (other.lateralChangeFromM !== null) {
           const otherProgress = Math.min(
-            1, (other.lateralChangeElapsed + elapsed) / LANE_CHANGE_DURATION
+            1, (other.lateralChangeElapsed + elapsed) / other.lateralChangeDuration
           );
           const otherEasedProgress = otherProgress * otherProgress * (3 - 2 * otherProgress);
           otherLateralPositionM = other.lateralChangeFromM
@@ -285,7 +358,8 @@
 
   function idm(vehicle, leader) {
     const speed = Math.max(0, vehicle.speed);
-    const freeRoad = 1 - (speed / vehicle.desiredSpeed) ** 4;
+    const desiredSpeed = Math.max(0.1, requestedSpeed(vehicle));
+    const freeRoad = 1 - (speed / desiredSpeed) ** 4;
     if (!leader) return vehicle.accelerationLimit * freeRoad;
     const gap = leader.position - leader.length / 2 - vehicle.position - vehicle.length / 2;
     if (gap <= 0) return -vehicle.deceleration;
@@ -308,8 +382,10 @@
   }
 
   function safeGaps(
-    vehicle, leader, follower, maxFollowerDeceleration = SAFE_FOLLOWER_DECELERATION
+    vehicle, leader, follower, maxFollowerDeceleration = SAFE_FOLLOWER_DECELERATION,
+    ignoredLeaderId = null
   ) {
+    if (leader && leader.id === ignoredLeaderId) leader = null;
     if (leader) {
       const frontGap = leader.position - leader.length / 2 - vehicle.position - vehicle.length / 2;
       const closing = Math.max(0, vehicle.speed - leader.speed);
@@ -376,9 +452,14 @@
     const currentGap = currentLeader.position - currentLeader.length / 2
       - vehicle.position - vehicle.length / 2;
     const closingSpeed = vehicle.speed - currentLeader.speed;
+    const passTarget = currentLeader;
+    const passGap = passTarget.position - passTarget.length / 2
+      - vehicle.position - vehicle.length / 2;
     const needsPass = !queuedAtFullClosure && currentLeader.kind !== 'barrier'
       && closingSpeed >= MIN_PASSING_CLOSING_SPEED
-      && currentGap <= Math.max(25, closingSpeed * PASSING_LOOKAHEAD);
+      && currentGap
+        <= Math.max(25,
+        closingSpeed * PASSING_LOOKAHEAD);
     if (!needsClosureMerge && !needsPass) {
       vehicle.waitingForMerge = false;
       return null;
@@ -388,17 +469,24 @@
     if (needsPass && !needsClosureMerge) {
       for (const lateralPositionM of lateralTrackPositions(vehicle, vehicle.lane)) {
         if (Math.abs(lateralPositionM - vehicle.lateralPositionM) < 0.35
-          || !lateralPathIsClear(vehicle, vehicle.lane, lateralPositionM)) continue;
+          || !lateralPathIsClear(vehicle, vehicle.lane, lateralPositionM,
+            LANE_CHANGE_DURATION, passTarget.id)) continue;
         const { leader, follower } = laneNeighbors(
-          state.vehicles, vehicle.lane, vehicle.position, vehicle.id, lateralPositionM
+          state.vehicles, vehicle.lane, vehicle.position, vehicle.id, lateralPositionM,
+          null, passTarget.id
         );
-        if (!safeGaps(vehicle, leader, follower)) continue;
+        if (!lateralPathIsClear(vehicle, vehicle.lane, lateralPositionM,
+          LANE_CHANGE_DURATION, passTarget.id)
+          || !safeGaps(vehicle, leader, follower, SAFE_FOLLOWER_DECELERATION, passTarget.id)) {
+          continue;
+        }
         const gain = idm(vehicle, leader) - currentAcceleration;
         const score = gain - Math.abs(lateralPositionM - vehicle.lateralPositionM) * 0.05;
-        if (gain >= MIN_LANE_GAIN && (!best || score > best.score)) {
+        if (gain >= MIN_LANE_GAIN
+          && (!best || score > best.score)) {
           best = {
             vehicle, lane: vehicle.lane, lateralPositionM, gain, score, returning: false,
-            targetId: currentLeader.id, closureMerge: false
+            targetId: passTarget.id, closureMerge: false
           };
         }
       }
@@ -412,12 +500,15 @@
       if (laneClosesAhead) continue;
       for (const lateralPositionM of lateralTrackPositions(vehicle, lane)) {
         const { leader, follower } = laneNeighbors(
-          state.vehicles, lane, vehicle.position, vehicle.id, lateralPositionM
+          state.vehicles, lane, vehicle.position, vehicle.id, lateralPositionM,
+          null, passTarget.id
         );
-        if (!lateralPathIsClear(vehicle, lane, lateralPositionM)
+        if (!lateralPathIsClear(vehicle, lane, lateralPositionM,
+          LANE_CHANGE_DURATION, passTarget.id)
           || !safeGaps(
             vehicle, leader, follower,
-            needsClosureMerge ? 0.5 : SAFE_FOLLOWER_DECELERATION
+            needsClosureMerge ? 0.5 : SAFE_FOLLOWER_DECELERATION,
+            passTarget.id
           )) continue;
         const gain = idm(vehicle, leader) - currentAcceleration;
         const closureGain = needsClosureMerge
@@ -430,7 +521,7 @@
           best = {
             vehicle, lane, lateralPositionM,
             gain: decisionGain, score, returning: false,
-            targetId: currentLeader.id, closureMerge: needsClosureMerge
+            targetId: passTarget.id, closureMerge: needsClosureMerge
           };
         }
       }
@@ -447,6 +538,7 @@
   ) {
     state.laneChanges += 1;
     const fromLateralPositionM = vehicle.lateralPositionM;
+    const target = state.vehicles.find((other) => other.id === targetId);
     vehicle.laneChangeFrom = fromLane === toLane ? null : fromLane;
     vehicle.laneChangeElapsed = 0;
     vehicle.previousLaneChangeElapsed = 0;
@@ -454,6 +546,7 @@
     vehicle.lateralChangeTargetM = targetLateralPositionM;
     vehicle.lateralChangeElapsed = 0;
     vehicle.previousLateralChangeElapsed = 0;
+    vehicle.lateralChangeDuration = LANE_CHANGE_DURATION;
     vehicle.cooldown = COOLDOWN_STEPS;
     if (returning) {
       vehicle.returnLane = null;
@@ -465,16 +558,17 @@
       return;
     }
     vehicle.waitingForMerge = false;
-    const target = state.vehicles.find((other) => other.id === targetId);
     vehicle.returnLane = fromLane;
     vehicle.returnLateralPositionM = fromLateralPositionM;
     vehicle.passingTargetId = targetId;
-    const targetName = target ? profiles[target.kind].label : 'slower traffic';
+    const targetName = target
+      ? `${profiles[target.kind].label} ${target.id + 1}`
+      : 'slower traffic';
     state.eventText = closureMerge
       ? `${profiles[vehicle.kind].label} ${vehicle.id + 1} moved to lane ${toLane + 1} to merge ahead of the closure.`
       : toLane === fromLane
-        ? `${profiles[vehicle.kind].label} ${vehicle.id + 1} is moving aside to pass a ${targetName}.`
-        : `${profiles[vehicle.kind].label} ${vehicle.id + 1} moved to lane ${toLane + 1} to pass a ${targetName}.`;
+        ? `${profiles[vehicle.kind].label} ${vehicle.id + 1} is moving aside to pass ${targetName}.`
+        : `${profiles[vehicle.kind].label} ${vehicle.id + 1} moved to lane ${toLane + 1} to pass ${targetName}.`;
   }
 
   function chooseArrivalKind() {
@@ -517,10 +611,13 @@
     for (const proposal of proposals) {
       const { vehicle, lane, lateralPositionM } = proposal;
       const { leader, follower } = laneNeighbors(
-        state.vehicles, lane, vehicle.position, vehicle.id, lateralPositionM
+        state.vehicles, lane, vehicle.position, vehicle.id, lateralPositionM,
+        null, proposal.targetId
       );
-      if (!lateralPathIsClear(vehicle, lane, lateralPositionM)
-        || !safeGaps(vehicle, leader, follower)) continue;
+      if (!lateralPathIsClear(vehicle, lane, lateralPositionM, LANE_CHANGE_DURATION,
+        proposal.targetId)
+        || !safeGaps(vehicle, leader, follower, SAFE_FOLLOWER_DECELERATION,
+          proposal.targetId)) continue;
       const fromLane = vehicle.lane;
       vehicle.lane = lane;
       registerEvent(
@@ -536,11 +633,29 @@
     const nextAccelerations = new Map();
     const nextLateralStates = new Map();
     for (const vehicle of ordered) {
-      const { leader } = laneNeighbors(
+      const { leader: detectedLeader } = laneNeighbors(
         state.vehicles, vehicle.lane, vehicle.position, vehicle.id
       );
+      const passingTarget = vehicle.passingTargetId === null
+        ? null
+        : state.vehicles.find((other) => other.id === vehicle.passingTargetId);
+      const passingTargetIsLaterallyClear = passingTarget
+        && Math.abs(vehicle.lateralPositionM - passingTarget.lateralPositionM)
+          - (vehicle.width + passingTarget.width) / 2 >= LATERAL_CLEARANCE_M;
+      const passingTargetIdToIgnore = passingTargetIsLaterallyClear
+        ? passingTarget.id
+        : null;
+      const { leader: effectiveLeader } = laneNeighbors(
+        state.vehicles, vehicle.lane, vehicle.position, vehicle.id,
+        vehicle.lateralPositionM, null, passingTargetIdToIgnore
+      );
+      const leader = detectedLeader
+        && passingTarget === detectedLeader
+        && passingTargetIsLaterallyClear
+        ? effectiveLeader
+        : detectedLeader;
       const acceleration = idm(vehicle, leader || null);
-      const speed = Math.max(0, Math.min(vehicle.desiredSpeed, vehicle.speed + acceleration * STEP));
+      const speed = Math.max(0, Math.min(requestedSpeed(vehicle), vehicle.speed + acceleration * STEP));
       let nextSpeed = speed;
       let position = vehicle.position + (vehicle.speed + nextSpeed) * 0.5 * STEP;
       if (leader) {
@@ -571,16 +686,19 @@
       let lateralChangeFromM = vehicle.lateralChangeFromM;
       let lateralChangeTargetM = vehicle.lateralChangeTargetM;
       if (lateralChangeFromM !== null) {
-        const proposedElapsed = Math.min(LANE_CHANGE_DURATION, lateralChangeElapsed + STEP);
-        const progress = proposedElapsed / LANE_CHANGE_DURATION;
+        const changeDuration = vehicle.lateralChangeDuration;
+        const proposedElapsed = Math.min(changeDuration, lateralChangeElapsed + STEP);
+        const progress = proposedElapsed / changeDuration;
         const easedProgress = progress * progress * (3 - 2 * progress);
         const proposedLateralPositionM = lateralChangeFromM
           + (lateralChangeTargetM - lateralChangeFromM) * easedProgress;
-        if (lateralPathIsClear(vehicle, vehicle.lane, proposedLateralPositionM, STEP)) {
+        if (lateralPathIsClear(
+          vehicle, vehicle.lane, proposedLateralPositionM, STEP, vehicle.passingTargetId
+        )) {
           lateralPositionM = proposedLateralPositionM;
           lateralChangeElapsed = proposedElapsed;
         }
-        if (lateralChangeElapsed >= LANE_CHANGE_DURATION) {
+        if (lateralChangeElapsed >= changeDuration) {
           lateralPositionM = lateralChangeTargetM;
           lateralChangeFromM = null;
           lateralChangeTargetM = null;
@@ -611,7 +729,7 @@
         vehicle.laneChangeElapsed = vehicle.lateralChangeElapsed;
         if (vehicle.lateralChangeFromM === null) {
           vehicle.laneChangeFrom = null;
-          vehicle.laneChangeElapsed = LANE_CHANGE_DURATION;
+          vehicle.laneChangeElapsed = vehicle.lateralChangeDuration;
         }
       }
     }
@@ -620,9 +738,15 @@
     for (const vehicle of state.vehicles) {
       if (vehicle.passingTargetId === null) continue;
       const target = byId.get(vehicle.passingTargetId);
-      if (target && vehicle.position > target.position + (vehicle.length + target.length) / 2) {
+      const lateralGap = target
+        ? Math.abs(vehicle.lateralPositionM - target.lateralPositionM)
+          - (vehicle.width + target.width) / 2
+        : -Infinity;
+      if (target
+        && lateralGap >= LATERAL_CLEARANCE_M
+        && vehicle.position > target.position + (vehicle.length + target.length) / 2) {
         state.overtakes += 1;
-        state.eventText = `${profiles[vehicle.kind].label} ${vehicle.id + 1} completed an overtake.`;
+        state.eventText = `${profiles[vehicle.kind].label} ${vehicle.id + 1} passed vehicle ${target.id + 1}.`;
         vehicle.passingTargetId = null;
         vehicle.passedTarget = true;
         vehicle.passedTargetTime = state.time;
@@ -650,8 +774,28 @@
       }
     }
     if (Math.floor(state.time) > Math.floor(state.time - STEP)) {
-      state.events.push(metricsSnapshot());
+      recordFrame();
     }
+  }
+
+  function recordFrame(force = false) {
+    const sample = metricsSnapshot();
+    const previousFrame = state.frames[state.frames.length - 1];
+    if (!force && previousFrame && previousFrame.timeSeconds === state.time) return;
+    state.events.push(sample);
+    state.frames.push({
+      ...sample,
+      overtakes: state.overtakes,
+      preventedContacts: state.preventedContacts,
+      exited: state.exited,
+      vehicles: state.vehicles.map((vehicle) => ({ ...vehicle })),
+      eventText: state.eventText,
+      eventLog: state.eventLog.slice(-20),
+      settings: getSettings()
+    });
+    ui.timeline.max = String(state.frames.length - 1);
+    if (viewFrameIndex === null) ui.timeline.value = String(state.frames.length - 1);
+    updateTimelineReadout();
   }
 
   function roundRect(x, y, width, height, radius) {
@@ -669,9 +813,9 @@
     const spec = profiles[vehicle.kind];
     const length = displayLength;
     const height = Math.max(4, Math.min(
-      vehicle.kind === 'bus' ? 12 : 10,
-      length * (vehicle.kind === 'motorcycle' ? 0.8 : vehicle.kind === 'bus' ? 0.55
-        : vehicle.kind === 'truck' ? 0.62 : 0.72)
+      vehicle.kind === 'bus' ? 17 : vehicle.kind === 'truck' ? 15 : 13,
+      length * (vehicle.kind === 'motorcycle' ? 0.8 : vehicle.kind === 'bus' ? 0.62
+        : vehicle.kind === 'truck' ? 0.7 : 0.78)
     ));
     ctx.save();
     ctx.translate(x, y);
@@ -723,12 +867,138 @@
 
   function displayVehicleLength(vehicle, scale) {
     return Math.max(
-      vehicle.kind === 'motorcycle' ? 7 : 9,
-      vehicle.length * scale * 1.5
+      vehicle.kind === 'motorcycle' ? 9 : 12,
+      vehicle.length * scale * 1.8
     );
   }
 
+  function roadMetrics() {
+    const bounds = canvas.getBoundingClientRect();
+    return {
+      width: bounds.width,
+      height: bounds.height,
+      left: 34,
+      right: bounds.width - 34,
+      laneY: [bounds.height * .415, bounds.height * .695]
+    };
+  }
+
+  function vehicleCanvasRect(vehicle, metrics = roadMetrics()) {
+    const scale = (metrics.right - metrics.left) / ROAD_LENGTH;
+    const x = metrics.left + vehicle.position * scale;
+    const lanePosition = vehicle.lateralPositionM / LANE_WIDTH_M;
+    const y = metrics.laneY[0] + lanePosition * (metrics.laneY[1] - metrics.laneY[0]);
+    const length = displayVehicleLength(vehicle, scale);
+    const height = Math.max(12, vehicle.kind === 'bus' ? 16 : 14);
+    return { x, y, width: length + 8, height: height + 8 };
+  }
+
+  function selectedVehicles() {
+    return state.vehicles.filter((vehicle) => selectedVehicleIds.has(vehicle.id));
+  }
+
+  function applySelection(nextIds, additive = false) {
+    if (!additive) selectedVehicleIds.clear();
+    for (const id of nextIds) selectedVehicleIds.add(id);
+    speedEditActive = false;
+    updateInspector();
+    canvas.closest('.micro-road-wrap').classList.toggle('has-selection', selectedVehicleIds.size > 0);
+    draw();
+  }
+
+  function hitVehicle(point) {
+    const metrics = roadMetrics();
+    return state.vehicles.slice().reverse().find((vehicle) => {
+      const rect = vehicleCanvasRect(vehicle, metrics);
+      return Math.abs(point.x - rect.x) <= rect.width / 2
+        && Math.abs(point.y - rect.y) <= rect.height / 2;
+    });
+  }
+
+  function vehiclesInSelection(rect) {
+    const metrics = roadMetrics();
+    return state.vehicles.filter((vehicle) => {
+      const point = vehicleCanvasRect(vehicle, metrics);
+      return point.x >= rect.left && point.x <= rect.right
+        && point.y >= rect.top && point.y <= rect.bottom;
+    }).map((vehicle) => vehicle.id);
+  }
+
+  function congestionDetails(vehicle) {
+    const leader = vehicleLeader(vehicle);
+    if (!leader) {
+      return { leader: 'Clear road', gap: 'No leader', status: 'Free flow' };
+    }
+    const gap = Math.max(0, leader.position - leader.length / 2
+      - vehicle.position - vehicle.length / 2);
+    const status = leader.kind === 'barrier'
+      ? 'Barrier ahead'
+      : gap < vehicle.minimumGap + vehicle.speed * vehicle.headway
+        ? 'Following closely' : 'Leader ahead';
+    return {
+      leader: leader.kind === 'barrier' ? 'Road restriction' : `${profiles[leader.kind].label} ${leader.id + 1}`,
+      gap: `${gap.toFixed(1)} m`,
+      status
+    };
+  }
+
+  function updateInspector() {
+    const selected = selectedVehicles();
+    ui.selectionCount.textContent = `${selected.length} SELECTED`;
+    ui.clearSelection.disabled = selected.length === 0;
+    ui.inspectorContent.hidden = selected.length === 0;
+    ui.inspectorEmpty.hidden = selected.length > 0;
+    ui.inspectorTitle.textContent = selected.length
+      ? selected.length === 1 ? `Vehicle ${selected[0].id + 1}` : `${selected.length} vehicles selected`
+      : 'Select a vehicle on the road';
+    ui.inspectorHelp.textContent = selected.length
+      ? 'Values update live. Congestion and safe speed options are calculated from each vehicle’s forward view.'
+      : 'Drag across the road to select one or more vehicles. Details are shown from each selected vehicle’s forward view.';
+    if (!selected.length) {
+      ui.applySpeedCap.disabled = true;
+      ui.cancelSpeedCap.hidden = true;
+      ui.speedAvailability.textContent = 'Select a vehicle to see safe speed options.';
+      return;
+    }
+    const first = selected[0];
+    const details = congestionDetails(first);
+    ui.selectedType.textContent = selected.length === 1
+      ? profiles[first.kind].label : `${selected.length} vehicle types`;
+    ui.selectedSpeed.textContent = selected.length === 1
+      ? `${(first.speed * 3.6).toFixed(1)} km/h` : `${(selected.reduce((sum, v) => sum + v.speed, 0) / selected.length * 3.6).toFixed(1)} km/h avg`;
+    ui.selectedLane.textContent = selected.length === 1 ? `Lane ${first.lane + 1}` : 'Multiple';
+    ui.selectedGap.textContent = selected.length === 1 ? details.gap : 'Per vehicle';
+    ui.selectedLeader.textContent = selected.length === 1 ? details.leader : 'Per vehicle';
+    ui.selectedStatus.textContent = selected.length === 1 ? details.status : 'Mixed POV';
+
+    const options = speedOptionsForSelection();
+    for (const option of ui.selectedSpeedCap.options) {
+      const result = options.find((item) => item.speed === Number(option.value));
+      option.disabled = !result?.available;
+      const label = `${option.value} km/h`;
+      option.textContent = result?.available ? label : `${label} — unavailable`;
+    }
+    if (!speedEditActive) {
+      const currentTarget = selected.every((vehicle) => vehicle.requestedSpeedKmh !== null
+        && vehicle.requestedSpeedKmh === selected[0].requestedSpeedKmh)
+        ? selected[0].requestedSpeedKmh : null;
+      ui.selectedSpeedCap.value = currentTarget === null
+        ? String(options.find((option) => option.available)?.speed ?? SPEED_TARGET_OPTIONS_KMH[0])
+        : String(currentTarget);
+    }
+    ui.applySpeedCap.disabled = !options.some((option) => option.available)
+      || ui.selectedSpeedCap.selectedOptions[0]?.disabled;
+    const minSafeSpeed = Math.min(...selected.map(safeSpeedFor));
+    ui.speedAvailability.textContent = speedEditActive
+      ? 'Edit mode active — playback is slowed to 0.5× while you adjust the requested speed.'
+      : `Requested speed can reach ${minSafeSpeed.toFixed(0)} km/h safely from the selected vehicle${selected.length > 1 ? 's' : ''}’ forward view; distance rules still take priority.`;
+    ui.cancelSpeedCap.hidden = !speedEditActive;
+  }
+
   function draw() {
+    const frame = viewFrameIndex === null ? null : state.frames[viewFrameIndex];
+    const displayState = frame || state;
+    const displaySettings = frame ? frame.settings : getSettings();
     const bounds = canvas.getBoundingClientRect();
     if (!bounds.width || !bounds.height) return;
     const width = Math.round(bounds.width * pixelRatio);
@@ -779,11 +1049,12 @@
     ctx.textAlign = 'right'; ctx.fillText('LANE 1', left - 3, laneY[0] + 3);
     ctx.fillText('LANE 2', left - 3, laneY[1] + 3);
 
-    if (ui.scenario.value !== 'busy') {
-      const barrierX = left + barrierPositionM / ROAD_LENGTH * roadWidth;
-      const closedLanes = ui.scenario.value === 'closure'
+    if (displaySettings.scenario !== 'busy') {
+      const displayedBarrierPosition = frame ? frame.barrierPositionM : barrierPositionM;
+      const barrierX = left + displayedBarrierPosition / ROAD_LENGTH * roadWidth;
+      const closedLanes = displaySettings.scenario === 'closure'
         ? [0, 1]
-        : [Number(ui.closedLane.value)];
+        : [displaySettings.closedLane - 1];
       for (const lane of closedLanes) {
         const laneTop = lane === 0 ? h * .285 : h * .565;
         const laneBottom = lane === 0 ? h * .545 : h * .825;
@@ -814,12 +1085,12 @@
       ctx.font = '700 9px "Segoe UI", Arial, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(`${barrierPositionM} m  DRAG`, barrierX, handleY);
+      ctx.fillText(`${displayedBarrierPosition} m${frame ? '' : '  DRAG'}`, barrierX, handleY);
       ctx.textBaseline = 'alphabetic';
     }
 
-    const interpolation = accumulator / STEP;
-    const renderVehicles = state.vehicles.map((vehicle) => {
+    const interpolation = frame ? 0 : accumulator / STEP;
+    const renderVehicles = displayState.vehicles.map((vehicle) => {
       const position = vehicle.previousPosition
         + (vehicle.position - vehicle.previousPosition) * interpolation;
       const lateralPositionM = vehicle.previousLateralPositionM
@@ -840,8 +1111,27 @@
       const lanePosition = lateralPositionM / LANE_WIDTH_M;
       const y = laneY[0] + lanePosition * (laneY[1] - laneY[0]);
       drawVehicle(vehicle, x, y, scale, displayLength);
+      if (selectedVehicleIds.has(vehicle.id)) {
+        ctx.strokeStyle = '#f6d46b';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 3]);
+        ctx.strokeRect(x - displayLength / 2 - 4, y - 10, displayLength + 8, 20);
+        ctx.setLineDash([]);
+      }
     }
-    updateReadouts();
+    if (selectionDrag) {
+      const leftEdge = Math.min(selectionDrag.startX, selectionDrag.currentX);
+      const topEdge = Math.min(selectionDrag.startY, selectionDrag.currentY);
+      const selectionWidth = Math.abs(selectionDrag.currentX - selectionDrag.startX);
+      const selectionHeight = Math.abs(selectionDrag.currentY - selectionDrag.startY);
+      ctx.fillStyle = 'rgba(40, 109, 114, 0.12)';
+      ctx.strokeStyle = '#286d72';
+      ctx.lineWidth = 1;
+      ctx.fillRect(leftEdge, topEdge, selectionWidth, selectionHeight);
+      ctx.strokeRect(leftEdge, topEdge, selectionWidth, selectionHeight);
+    }
+    updateReadouts(displayState, displaySettings);
+    if (viewFrameIndex === null) updateInspector();
   }
 
   function formatTime(seconds) {
@@ -850,10 +1140,10 @@
     return `${String(minutes).padStart(2, '0')}:${String(remaining).padStart(2, '0')}`;
   }
 
-  function updateReadouts() {
+  function updateReadouts(displayState = state, displaySettings = getSettings()) {
     const counts = { car: 0, motorcycle: 0, rickshaw: 0, bus: 0, truck: 0 };
     let speedTotal = 0;
-    for (const vehicle of state.vehicles) {
+    for (const vehicle of displayState.vehicles) {
       counts[vehicle.kind] += 1;
       speedTotal += vehicle.speed;
     }
@@ -862,37 +1152,55 @@
     $('rickshawsCount').textContent = counts.rickshaw;
     $('busesCount').textContent = counts.bus;
     $('trucksCount').textContent = counts.truck;
-    ui.vehicles.textContent = state.vehicles.length;
-    ui.overtakes.textContent = state.overtakes;
-    ui.laneChanges.textContent = state.laneChanges;
-    $('microContacts').textContent = state.preventedContacts;
-    const meanSpeed = state.vehicles.length ? speedTotal / state.vehicles.length * 3.6 : 0;
-    const density = state.vehicles.length / (ROAD_LENGTH / 1000 * 2);
-    const queueCount = state.vehicles.filter((vehicle) =>
-      barrierBlocksLane(vehicle.lane)
-        && vehicle.position + vehicle.length / 2 >= barrierPositionM - 60
-        && vehicle.position + vehicle.length / 2 < barrierPositionM
+    ui.vehicles.textContent = displayState.vehicles.length;
+    ui.overtakes.textContent = displayState.overtakes;
+    ui.laneChanges.textContent = displayState.laneChanges;
+    $('microContacts').textContent = displayState.preventedContacts;
+    const meanSpeed = displayState.vehicles.length ? speedTotal / displayState.vehicles.length * 3.6 : 0;
+    const density = displayState.vehicles.length / (ROAD_LENGTH / 1000 * 2);
+    const displayedBarrierPosition = displaySettings.barrierPositionM ?? barrierPositionM;
+    const queueCount = displayState.vehicles.filter((vehicle) =>
+      (displaySettings.scenario === 'closure'
+        || (displaySettings.scenario === 'partial' && vehicle.lane === displaySettings.closedLane - 1))
+        && vehicle.position + vehicle.length / 2 >= displayedBarrierPosition - 60
+        && vehicle.position + vehicle.length / 2 < displayedBarrierPosition
         && vehicle.speed < 0.7
     ).length;
     ui.meanSpeed.innerHTML = `${meanSpeed.toFixed(1)} <small>km/h</small>`;
     $('microDensity').innerHTML = `${density.toFixed(1)} <small>veh/km/lane</small>`;
-    $('microExited').textContent = state.exited;
+    $('microExited').textContent = displayState.exited;
     $('microQueue').textContent = queueCount;
-    ui.time.textContent = formatTime(state.time);
-    ui.event.textContent = state.eventText;
+    ui.time.textContent = formatTime(displayState.time);
+    ui.event.textContent = displayState.eventText;
+    updateTimelineReadout();
+  }
+
+  function updateTimelineReadout() {
+    const index = viewFrameIndex === null ? state.frames.length - 1 : viewFrameIndex;
+    const frame = state.frames[index];
+    if (!frame) return;
+    ui.timelineTime.textContent = formatTime(frame.timeSeconds);
+    ui.timeline.value = String(index);
   }
 
   function getSettings() {
     return {
       roadLengthM: ROAD_LENGTH,
       lanes: 2,
+      seed: Number(ui.seed.value),
       scenario: ui.scenario.value,
       closedLane: ui.scenario.value === 'partial' ? Number(ui.closedLane.value) + 1 : null,
       barrierPositionM: ui.scenario.value === 'busy' ? null : barrierPositionM,
       averageArrivalsPerMinute: Number(ui.arrivalRate.value),
       arrivalVariationPercent: Number(ui.variation.value),
       speedLimitKmh: Number(ui.speedLimit.value),
-      durationSeconds: Number(ui.duration.value)
+      durationSeconds: Number(ui.duration.value),
+      selectedVehicleIds: Array.from(selectedVehicleIds).sort((a, b) => a - b),
+      requestedVehicleSpeedsKmh: state
+        ? state.vehicles
+          .filter((vehicle) => vehicle.requestedSpeedKmh !== null)
+          .map((vehicle) => ({ vehicleId: vehicle.id, requestedSpeedKmh: vehicle.requestedSpeedKmh }))
+        : []
     };
   }
 
@@ -943,24 +1251,27 @@
   function exportCsv() {
     if (!settingsAreValid()) return;
     const settings = getSettings();
+    const selectedIds = Array.from(selectedVehicleIds).sort((a, b) => a - b);
+    const selectedIdCell = selectedIds.map((id) => `Vehicle ${id + 1}`).join('; ');
     const columns = [
-      'scenario', 'closed_lane', 'barrier_position_m', 'average_arrivals_per_minute',
+      'seed', 'scenario', 'closed_lane', 'barrier_position_m', 'average_arrivals_per_minute',
       'arrival_variation_percent', 'speed_limit_kmh', 'duration_seconds',
       'time_seconds', 'barrier_position_at_sample_m', 'vehicles_on_road', 'cars', 'motorcycles', 'auto_rickshaws',
       'buses', 'trucks', 'mean_speed_kmh', 'density_vehicles_per_km_per_lane',
       'queue_at_barrier', 'exited_vehicles', 'completed_overtakes', 'lane_changes',
-      'contacts_prevented'
+      'contacts_prevented', 'selected_vehicle_count', 'selected_vehicle_ids', 'selection_highlight'
     ];
     const rows = exportRows().map((row) => [
-      settings.scenario, settings.closedLane ?? '', settings.barrierPositionM ?? '',
+      settings.seed, settings.scenario, settings.closedLane ?? '', settings.barrierPositionM ?? '',
       settings.averageArrivalsPerMinute, settings.arrivalVariationPercent,
       settings.speedLimitKmh, settings.durationSeconds,
       row.timeSeconds, row.barrierPositionM ?? '', row.vehiclesOnRoad, row.vehicleCounts.car, row.vehicleCounts.motorcycle,
       row.vehicleCounts.rickshaw, row.vehicleCounts.bus, row.vehicleCounts.truck,
       row.meanSpeedKmh.toFixed(3), row.densityVehiclesPerKmPerLane.toFixed(3),
       row.queueAtBarrier, row.exitedVehicles, row.completedOvertakes, row.laneChanges,
-      row.contactsPrevented
-    ].join(','));
+      row.contactsPrevented, selectedIds.length, selectedIdCell,
+      selectedIds.length ? 'HIGHLIGHTED' : ''
+    ].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','));
     download('flowline-vehicle-run.csv', [columns.join(','), ...rows].join('\n'), 'text/csv;charset=utf-8');
   }
 
@@ -970,6 +1281,16 @@
       model: 'individual-vehicle',
       settings: getSettings(),
       summary: metricsSnapshot(),
+      selectedVehicles: selectedVehicles().map((vehicle) => ({
+        selected: true,
+        highlighted: true,
+        vehicleId: vehicle.id,
+        type: profiles[vehicle.kind].label,
+        lane: vehicle.lane + 1,
+        speedKmh: Number((vehicle.speed * 3.6).toFixed(3)),
+        requestedSpeedKmh: vehicle.requestedSpeedKmh,
+        forwardView: congestionDetails(vehicle)
+      })),
       samples: exportRows(),
       limitations: 'Illustrative, uncalibrated vehicle behavior; not for engineering or safety decisions.'
     }, null, 2), 'application/json');
@@ -978,13 +1299,13 @@
   function setRunning(value) {
     running = value;
     ui.status.textContent = running ? 'IN MOTION' : (
-      state.endReached ? 'QUEUE SPILLBACK' : (
+      viewFrameIndex !== null ? 'HISTORY' : state.endReached ? 'QUEUE SPILLBACK' : (
         state.time >= Number(ui.duration.value) ? 'COMPLETE' : (state.time ? 'PAUSED' : 'READY')
       )
     );
     ui.status.classList.toggle('is-running', running);
     ui.playIcon.textContent = running ? 'Ⅱ' : '▶';
-    ui.playText.textContent = running ? 'Pause' : (
+    ui.playText.textContent = running ? 'Pause' : viewFrameIndex !== null ? 'Replay from here' : (
       state.endReached || state.time >= Number(ui.duration.value)
         ? 'Run again' : (state.time ? 'Resume' : 'Play')
     );
@@ -992,8 +1313,27 @@
 
   function animate(now) {
     if (!running) return;
-    if (previousTime) accumulator += Math.min(0.1, (now - previousTime) / 1000) * Number(ui.speed.value);
+    const elapsed = previousTime ? Math.min(0.1, (now - previousTime) / 1000) : 0;
     previousTime = now;
+    if (replayingHistory) {
+      replayAccumulator += elapsed * Number(ui.speed.value);
+      const frameAdvance = Math.floor(replayAccumulator);
+      if (frameAdvance > 0) {
+        replayAccumulator -= frameAdvance;
+        viewFrameIndex = Math.min(state.frames.length - 1, viewFrameIndex + frameAdvance);
+        if (viewFrameIndex >= state.frames.length - 1) {
+          viewFrameIndex = null;
+          replayingHistory = false;
+          replayAccumulator = 0;
+          accumulator = 0;
+        }
+        updateTimelineReadout();
+      }
+      draw();
+      rafId = window.requestAnimationFrame(animate);
+      return;
+    }
+    accumulator += elapsed * Number(ui.speed.value) * (speedEditActive ? 0.5 : 1);
     while (accumulator >= STEP && !state.endReached) {
       step();
       accumulator -= STEP;
@@ -1001,6 +1341,8 @@
     if (state.endReached) accumulator = 0;
     draw();
     if (state.endReached || state.time >= Number(ui.duration.value)) {
+      if (state.frames[state.frames.length - 1]?.timeSeconds !== state.time) recordFrame();
+      updateTimelineReadout();
       setRunning(false);
       return;
     }
@@ -1015,7 +1357,14 @@
       return;
     }
     if (!settingsAreValid()) return;
-    if ((state.endReached || state.time >= Number(ui.duration.value)) && !reset()) return;
+    if (viewFrameIndex !== null && viewFrameIndex < state.frames.length - 1) {
+      replayingHistory = true;
+      replayAccumulator = 0;
+    } else {
+      viewFrameIndex = null;
+      replayingHistory = false;
+      if ((state.endReached || state.time >= Number(ui.duration.value)) && !reset()) return;
+    }
     setRunning(true);
     previousTime = 0;
     rafId = window.requestAnimationFrame(animate);
@@ -1025,14 +1374,26 @@
     if (!settingsAreValid()) return false;
     if (rafId) window.cancelAnimationFrame(rafId);
     state = createState();
+    viewFrameIndex = null;
+    replayingHistory = false;
+    replayAccumulator = 0;
     accumulator = 0;
     previousTime = 0;
+    selectedVehicleIds.clear();
+    speedEditActive = false;
+    selectionDrag = null;
+    canvas.closest('.micro-road-wrap').classList.remove('has-selection', 'is-selecting');
+    recordFrame(true);
     setRunning(false);
     draw();
     return true;
   }
 
   function settingsAreValid() {
+    if (!ui.seed.checkValidity()) {
+      ui.seed.reportValidity();
+      return false;
+    }
     if (ui.barrierPosition.disabled || ui.barrierPosition.checkValidity()) return true;
     ui.barrierPosition.reportValidity();
     return false;
@@ -1092,12 +1453,27 @@
   }
 
   canvas.addEventListener('pointerdown', (event) => {
-    if (ui.scenario.value === 'busy') return;
     const point = barrierPointerPosition(event);
-    if (!point.withinRoad || Math.abs(point.x - point.markerX) > 16) return;
-    draggingBarrier = true;
+    if (ui.scenario.value !== 'busy' && point.withinRoad && Math.abs(point.x - point.markerX) <= 16) {
+      draggingBarrier = true;
+      canvas.setPointerCapture(event.pointerId);
+      canvas.closest('.micro-road-wrap').classList.add('is-barrier-dragging');
+      event.preventDefault();
+      return;
+    }
+    if (viewFrameIndex !== null || !point.withinRoad) return;
+    const hit = hitVehicle(point);
+    if (hit && !event.shiftKey) {
+      applySelection([hit.id]);
+      event.preventDefault();
+      return;
+    }
+    selectionDrag = {
+      startX: point.x, startY: point.y, currentX: point.x, currentY: point.y,
+      additive: event.shiftKey
+    };
     canvas.setPointerCapture(event.pointerId);
-    canvas.closest('.micro-road-wrap').classList.add('is-barrier-dragging');
+    canvas.closest('.micro-road-wrap').classList.add('is-selecting');
     event.preventDefault();
   });
   canvas.addEventListener('pointermove', (event) => {
@@ -1106,15 +1482,39 @@
       updateBarrierFromPointer(event);
       return;
     }
+    if (selectionDrag) {
+      selectionDrag.currentX = point.x;
+      selectionDrag.currentY = point.y;
+      draw();
+      return;
+    }
     canvas.closest('.micro-road-wrap').classList.toggle(
       'is-barrier-draggable',
       ui.scenario.value !== 'busy' && point.withinRoad && Math.abs(point.x - point.markerX) <= 16
     );
   });
   function stopBarrierDrag(event) {
-    if (!draggingBarrier) return;
-    draggingBarrier = false;
-    canvas.closest('.micro-road-wrap').classList.remove('is-barrier-dragging');
+    if (draggingBarrier) {
+      draggingBarrier = false;
+      canvas.closest('.micro-road-wrap').classList.remove('is-barrier-dragging');
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      return;
+    }
+    if (!selectionDrag) return;
+    const drag = selectionDrag;
+    selectionDrag = null;
+    canvas.closest('.micro-road-wrap').classList.remove('is-selecting');
+    const width = Math.abs(drag.currentX - drag.startX);
+    const height = Math.abs(drag.currentY - drag.startY);
+    const rect = {
+      left: Math.min(drag.startX, drag.currentX),
+      right: Math.max(drag.startX, drag.currentX),
+      top: Math.min(drag.startY, drag.currentY),
+      bottom: Math.max(drag.startY, drag.currentY)
+    };
+    const hit = width < 8 && height < 8 ? hitVehicle({ x: drag.currentX, y: drag.currentY }) : null;
+    const ids = hit ? [hit.id] : vehiclesInSelection(rect);
+    applySelection(ids, drag.additive);
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
   }
   canvas.addEventListener('pointerup', stopBarrierDrag);
@@ -1122,9 +1522,41 @@
 
   ui.play.addEventListener('click', start);
   ui.reset.addEventListener('click', reset);
+  ui.clearSelection.addEventListener('click', () => applySelection([]));
+  ui.selectedSpeedCap.addEventListener('change', () => {
+    speedEditActive = true;
+    updateInspector();
+  });
+  ui.applySpeedCap.addEventListener('click', () => {
+    const selected = selectedVehicles();
+    const option = ui.selectedSpeedCap.selectedOptions[0];
+    if (!selected.length || !option || option.disabled) return;
+    const target = Number(option.value);
+    for (const vehicle of selected) vehicle.requestedSpeedKmh = target;
+    speedEditActive = false;
+    state.eventText = `Set ${selected.length} selected vehicle${selected.length === 1 ? '' : 's'} to a requested ${target} km/h travel speed.`;
+    recordFrame(true);
+    updateInspector();
+    draw();
+  });
+  ui.cancelSpeedCap.addEventListener('click', () => {
+    speedEditActive = false;
+    updateInspector();
+  });
+  ui.timeline.addEventListener('input', () => {
+    if (running) {
+      window.cancelAnimationFrame(rafId);
+      setRunning(false);
+      previousTime = 0;
+    }
+    replayingHistory = false;
+    viewFrameIndex = Number(ui.timeline.value);
+    updateTimelineReadout();
+    draw();
+  });
   for (const control of [
     ui.scenario, ui.closedLane, ui.arrivalRate, ui.variation,
-    ui.speedLimit, ui.duration
+    ui.speedLimit, ui.duration, ui.seed
   ]) {
     control.addEventListener('change', () => {
       updateScenarioControls();

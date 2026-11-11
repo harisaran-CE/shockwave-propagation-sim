@@ -2,52 +2,33 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
   grid-template-rows: auto 1fr auto;
-  gap: 25px 30px;
+  gap: 18px 24px;
   max-width: 1220px;
   margin: 0 auto;
-  padding: 34px 28px 24px;
+  padding: 22px 28px 24px;
 }
 
 .micro-intro {
-  grid-column: 1;
-  padding: 0 10px;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  column-gap: 24px;
 }
 
 .micro-intro h1 {
-  margin: 14px 0 12px;
-  font-size: clamp(38px, 4.4vw, 56px);
-  line-height: 1.04;
-  letter-spacing: -2px;
-}
-
-.micro-intro h1 em {
-  color: var(--blue);
-  font-style: normal;
-  font-weight: 600;
+  grid-column: 1;
+  margin: 3px 0 0;
+  font-size: 24px;
+  line-height: 1.25;
 }
 
 .micro-intro p {
-  max-width: 620px;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  max-width: 480px;
   margin: 0;
   color: var(--muted);
-}
-
-.micro-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 13px;
-}
-
-.micro-badges span {
-  padding: 4px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--blue-dark);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: .45px;
 }
 
 .micro-workspace {
@@ -103,6 +84,10 @@
   color: var(--muted);
   font-size: 8px;
   letter-spacing: .5px;
+}
+
+.micro-timeline {
+  padding: 10px 0 2px;
 }
 
 .micro-legend {
@@ -214,7 +199,7 @@
 
 .micro-notes {
   grid-column: 2;
-  grid-row: 1 / span 2;
+  grid-row: 2;
   align-self: start;
   padding: 20px;
   border: 1px solid var(--border);
@@ -261,6 +246,115 @@
   grid-row: 3;
 }
 
+.vehicle-inspector {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-soft);
+}
+
+.inspector-head,
+.speed-edit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.inspector-head h2 {
+  margin: 4px 0 0;
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.inspector-head .section-kicker span {
+  margin-left: 7px;
+  color: var(--blue);
+}
+
+.inspector-clear {
+  min-height: 31px;
+  padding: 0 10px;
+}
+
+.inspector-help,
+.inspector-empty {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.inspector-content {
+  margin-top: 12px;
+}
+
+.vehicle-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.vehicle-detail-grid > div {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.vehicle-detail-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .45px;
+}
+
+.vehicle-detail-grid strong {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.speed-edit {
+  margin-top: 12px;
+}
+
+.speed-edit .field-label {
+  display: block;
+  margin-top: 0;
+}
+
+.speed-edit-row {
+  justify-content: flex-start;
+}
+
+.speed-edit-row .field-select {
+  flex: 0 1 170px;
+}
+
+.speed-edit-row .primary-button,
+.speed-edit-row .quiet-button {
+  min-height: 35px;
+}
+
+.speed-edit-row .primary-button:disabled {
+  cursor: not-allowed;
+  opacity: .48;
+}
+
+.micro-road-wrap.is-selecting #microRoad {
+  cursor: crosshair;
+}
+
+.micro-road-wrap.has-selection #microRoad {
+  cursor: pointer;
+}
+
 @media (max-width: 900px) {
   .micro-layout {
     grid-template-columns: minmax(0, 1fr);
@@ -271,6 +365,20 @@
   .micro-notes {
     grid-column: 1;
     grid-row: 3;
+  }
+
+  .vehicle-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .micro-intro {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 4px;
+  }
+
+  .micro-intro p {
+    grid-column: 1;
+    grid-row: auto;
   }
 
   .micro-layout > .footnote {
@@ -312,6 +420,20 @@
   }
 
   .micro-controls .download-button {
+    flex: 1;
+  }
+
+  .speed-edit-row {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .speed-edit-row .field-select {
+    flex-basis: 100%;
+  }
+
+  .speed-edit-row .primary-button,
+  .speed-edit-row .quiet-button {
     flex: 1;
   }
 }
