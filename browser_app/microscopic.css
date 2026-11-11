@@ -443,3 +443,393 @@
     scroll-behavior: auto;
   }
 }
+
+/* Forensic replay studio skin */
+:root {
+  --page: #10171b;
+  --surface: #172126;
+  --surface-soft: #1d2a30;
+  --border: #2d3d43;
+  --ink: #e7efec;
+  --muted: #91a2a7;
+  --quiet: #718187;
+  --blue: #5ac1bd;
+  --blue-dark: #8be0d5;
+  --blue-pale: #173a3e;
+  --green: #70d09d;
+  --amber: #e9af62;
+}
+
+body {
+  background:
+    radial-gradient(circle at 50% -20%, #263c43 0, transparent 38rem),
+    var(--page);
+  color: var(--ink);
+}
+
+.topbar {
+  height: 58px;
+  padding: 0 clamp(16px, 4vw, 52px);
+  background: #111b20eF;
+  border-bottom-color: #2b3c42;
+}
+
+.brand,
+.scene-head h2,
+.inspector-head h2,
+.micro-notes h2 {
+  color: var(--ink);
+}
+
+.brand-mark {
+  border-radius: 6px;
+  background: var(--blue);
+  color: #102024;
+}
+
+.top-note,
+.field-label,
+.section-kicker,
+.clock-label,
+.micro-legend,
+.micro-distance,
+.timeline-labels {
+  color: var(--muted);
+}
+
+.micro-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto auto;
+  gap: 16px;
+  max-width: 1440px;
+  padding: 24px clamp(16px, 4vw, 52px) 28px;
+}
+
+.micro-intro {
+  grid-column: 1;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 2px 3px;
+}
+
+.micro-intro h1 {
+  margin-top: 6px;
+  color: var(--ink);
+  font-size: clamp(26px, 3vw, 38px);
+  letter-spacing: -1.2px;
+}
+
+.micro-intro p {
+  max-width: 430px;
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.micro-workspace {
+  grid-column: 1;
+  grid-row: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 286px;
+  grid-template-rows: auto auto auto auto auto auto auto auto;
+  column-gap: 18px;
+  align-items: start;
+  padding: 18px;
+  border: 1px solid #33464d;
+  border-radius: 10px;
+  background: #151f24;
+  box-shadow: 0 18px 50px #00000028;
+}
+
+.micro-workspace > .scene-head,
+.micro-workspace > .micro-road-wrap,
+.micro-workspace > .barrier-drag-hint,
+.micro-workspace > .micro-distance,
+.micro-workspace > .micro-timeline,
+.micro-workspace > .micro-legend,
+.micro-workspace > .micro-readouts,
+.micro-workspace > .micro-event,
+.micro-workspace > .micro-controls {
+  grid-column: 1;
+}
+
+.micro-workspace > .scene-head { grid-row: 1; }
+.micro-workspace > .micro-road-wrap { grid-row: 2; }
+.micro-workspace > .barrier-drag-hint { grid-row: 3; }
+.micro-workspace > .micro-distance { grid-row: 4; }
+.micro-workspace > .micro-timeline { grid-row: 5; }
+.micro-workspace > .micro-legend { grid-row: 6; }
+.micro-workspace > .micro-readouts { grid-row: 7; }
+.micro-workspace > .micro-event { grid-row: 8; }
+.micro-workspace > .micro-controls { grid-row: 9; }
+
+.micro-workspace > .vehicle-inspector {
+  grid-column: 2;
+  grid-row: 1 / span 9;
+  width: 100%;
+  margin: 0;
+  position: sticky;
+  top: 16px;
+  padding: 0;
+  border: 1px solid #33464d;
+  border-radius: 8px;
+  background: #1b292f;
+  overflow: hidden;
+}
+
+.inspector-head {
+  min-height: 74px;
+  padding: 14px;
+  cursor: pointer;
+  border-bottom: 1px solid #33464d;
+  list-style: none;
+}
+
+.inspector-head::-webkit-details-marker {
+  display: none;
+}
+
+.vehicle-inspector[open] .inspector-head {
+  background: #203239;
+}
+
+.vehicle-inspector[open] .inspector-head::after {
+  content: "−";
+  align-self: flex-start;
+  color: var(--blue);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.vehicle-inspector:not([open]) .inspector-head::after {
+  content: "+";
+  align-self: flex-start;
+  color: var(--blue);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.vehicle-inspector > :not(.inspector-head) {
+  margin-left: 14px;
+  margin-right: 14px;
+}
+
+.vehicle-inspector > .inspector-help {
+  margin-top: 12px;
+}
+
+.vehicle-inspector > .inspector-empty {
+  margin-bottom: 14px;
+}
+
+.inspector-head h2 {
+  font-size: 14px;
+}
+
+.micro-road-wrap {
+  margin-top: 14px;
+  border-color: #3a4f56;
+  border-radius: 7px;
+  background: #223037;
+  box-shadow: inset 0 0 0 1px #0e171a;
+}
+
+#microRoad {
+  height: clamp(320px, 34vw, 470px);
+}
+
+.micro-distance {
+  padding: 0 3px;
+}
+
+.micro-timeline {
+  padding-top: 13px;
+}
+
+input[type="range"] {
+  background: #30464d;
+}
+
+input[type="range"]::-webkit-slider-thumb,
+input[type="range"]::-moz-range-thumb {
+  background: var(--blue);
+  box-shadow: 0 0 0 1px var(--blue);
+}
+
+.micro-legend {
+  padding: 13px 2px 4px;
+  border-top: 1px solid #2a3b41;
+}
+
+.micro-readouts {
+  margin-top: 12px;
+}
+
+.micro-readouts > div,
+.vehicle-detail-grid > div {
+  border-color: #33464d;
+  background: #1b292f;
+}
+
+.micro-readouts strong,
+.vehicle-detail-grid strong,
+.clock strong {
+  color: var(--ink);
+}
+
+.micro-event {
+  border-left-color: var(--green);
+  background: #18383a;
+  color: #b6e4da;
+}
+
+.micro-controls {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #2a3b41;
+}
+
+.primary-button {
+  border-radius: 5px;
+  background: var(--blue);
+  color: #102024;
+}
+
+.primary-button:hover:not(:disabled) {
+  background: var(--blue-dark);
+  color: #122126;
+}
+
+.quiet-button {
+  border-radius: 5px;
+  color: var(--muted);
+}
+
+.quiet-button:hover:not(:disabled) {
+  background: #263940;
+  color: var(--ink);
+}
+
+.download-button,
+.speed-control select,
+.field-select {
+  border-color: #3a5057;
+  background: #172329;
+  color: var(--ink);
+}
+
+.download-button {
+  border-radius: 5px;
+}
+
+.download-button:hover:not(:disabled) {
+  background: #234047;
+}
+
+.micro-notes {
+  grid-column: 1;
+  grid-row: 3;
+  display: block;
+  max-width: 720px;
+  padding: 16px 18px;
+  border-color: #33464d;
+  border-radius: 8px;
+  background: #151f24;
+}
+
+.micro-notes > .settings-intro {
+  margin-top: 4px;
+}
+
+.micro-notes > .field-label {
+  margin-top: 8px;
+}
+
+.micro-notes > .field-hint {
+  min-height: 28px;
+}
+
+.micro-notes .conditional-setting {
+  display: grid;
+  align-content: end;
+}
+
+.micro-notes .conditional-setting[hidden] {
+  display: none;
+}
+
+.physics-details {
+  border-color: #33464d;
+}
+
+.physics-details summary,
+.physics-details p {
+  color: var(--muted);
+}
+
+.micro-layout > .footnote {
+  grid-column: 1;
+  grid-row: 4;
+  padding: 0 2px;
+}
+
+@media (max-width: 980px) {
+  .micro-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .micro-workspace > .vehicle-inspector {
+    grid-column: 1;
+    grid-row: 10;
+    position: static;
+    margin-top: 16px;
+  }
+
+}
+
+@media (max-width: 600px) {
+  .micro-intro {
+    display: block;
+  }
+
+  .micro-intro p {
+    margin-top: 8px;
+  }
+
+  .micro-layout {
+    gap: 12px;
+    padding: 18px 12px 20px;
+  }
+
+  .micro-workspace {
+    padding: 12px;
+  }
+
+  #microRoad {
+    height: 300px;
+  }
+
+  .micro-notes {
+    display: block;
+    padding: 15px;
+  }
+
+  .micro-notes > .field-label {
+    margin-top: 14px;
+  }
+
+  .micro-notes > .field-select,
+  .micro-notes > .field-hint,
+  .micro-notes > .variability-slider,
+  .micro-notes > .conditional-setting {
+    display: block;
+    width: 100%;
+  }
+
+  .micro-notes .conditional-setting[hidden] {
+    display: none;
+  }
+}

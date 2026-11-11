@@ -1522,7 +1522,10 @@
 
   ui.play.addEventListener('click', start);
   ui.reset.addEventListener('click', reset);
-  ui.clearSelection.addEventListener('click', () => applySelection([]));
+  ui.clearSelection.addEventListener('click', (event) => {
+    event.stopPropagation();
+    applySelection([]);
+  });
   ui.selectedSpeedCap.addEventListener('change', () => {
     speedEditActive = true;
     updateInspector();
