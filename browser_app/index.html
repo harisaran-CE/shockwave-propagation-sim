@@ -20,9 +20,8 @@
   <main class="micro-layout">
     <section class="micro-intro">
       <div class="eyebrow"><span class="live-dot"></span> VEHICLE TRAFFIC MODEL</div>
-      <h1>Cars, bikes, buses.<br><em>All on the road.</em></h1>
-      <p>Watch individual vehicles arrive, follow one another, and change lanes when there is room. Each road lane has four marked paths; add a lane restriction or road closure to see how traffic responds.</p>
-      <div class="micro-badges"><span>INDIVIDUAL VEHICLES</span><span>GAP-CHECKED LANE CHANGES</span></div>
+      <h1>Vehicle traffic simulation</h1>
+      <p>Individual vehicles, lane changes, and road restrictions on a 500 m road.</p>
     </section>
 
     <section class="micro-workspace" aria-label="Microscopic vehicle simulation">
@@ -35,10 +34,15 @@
       </div>
 
       <div class="micro-road-wrap">
-        <canvas id="microRoad" role="img" aria-label="Two-lane road with four marked paths in each lane, showing individually simulated vehicles. Drag the barrier marker on the road to move it during the simulation."></canvas>
+        <canvas id="microRoad" role="img" aria-label="Two-lane road with four marked paths in each lane, showing individually simulated vehicles. Drag across the road to select vehicles; drag the barrier marker to move it during the simulation."></canvas>
       </div>
       <div class="field-hint barrier-drag-hint">Drag the barrier itself on the road to move it while the simulation runs.</div>
       <div class="micro-distance"><span>0 m <small>UPSTREAM</small></span><span>500 m <small>DOWNSTREAM</small></span></div>
+
+      <div class="micro-timeline">
+        <div class="timeline-labels"><span>RUN HISTORY</span><span id="microTimelineTime">00:00</span></div>
+        <input id="microTimeline" type="range" min="0" max="0" value="0" step="1" aria-label="Simulation history">
+      </div>
 
       <div class="micro-legend" aria-label="Vehicle types">
         <span><i class="swatch car"></i>Cars <b id="carsCount">0</b></span>
@@ -60,6 +64,48 @@
       </div>
 
       <div class="micro-event" id="microEvent" aria-live="polite">Vehicles are ready. Press Play to watch them move and pass.</div>
+      <section class="vehicle-inspector" aria-label="Selected vehicle inspector">
+        <div class="inspector-head">
+          <div>
+            <div class="section-kicker">VEHICLE INSPECTOR <span id="microSelectionCount">0 SELECTED</span></div>
+            <h2 id="microInspectorTitle">Select a vehicle on the road</h2>
+          </div>
+          <button class="quiet-button inspector-clear" id="microClearSelection" type="button" disabled>Clear</button>
+        </div>
+        <p class="inspector-help" id="microInspectorHelp">Drag across the road to select one or more vehicles. Details are shown from each selected vehicle's forward view.</p>
+        <div class="inspector-empty" id="microInspectorEmpty">No vehicle selected.</div>
+        <div class="inspector-content" id="microInspectorContent" hidden>
+          <div class="vehicle-detail-grid">
+            <div><span>TYPE</span><strong id="microSelectedType">—</strong></div>
+            <div><span>LIVE SPEED</span><strong id="microSelectedSpeed">—</strong></div>
+            <div><span>LANE</span><strong id="microSelectedLane">—</strong></div>
+            <div><span>FORWARD GAP</span><strong id="microSelectedGap">—</strong></div>
+            <div><span>LEADER</span><strong id="microSelectedLeader">—</strong></div>
+            <div><span>ROAD STATUS</span><strong id="microSelectedStatus">—</strong></div>
+          </div>
+          <div class="speed-edit">
+            <label class="field-label" for="microSelectedSpeedCap">Set requested travel speed</label>
+            <div class="speed-edit-row">
+              <select class="field-select" id="microSelectedSpeedCap" aria-label="Requested travel speed">
+                <option value="20">20 km/h</option>
+                <option value="30">30 km/h</option>
+                <option value="40">40 km/h</option>
+                <option value="50">50 km/h</option>
+                <option value="60">60 km/h</option>
+                <option value="70">70 km/h</option>
+                <option value="80">80 km/h</option>
+                <option value="90">90 km/h</option>
+                <option value="100">100 km/h</option>
+                <option value="110">110 km/h</option>
+                <option value="120">120 km/h</option>
+              </select>
+              <button class="primary-button" id="microApplySpeedCap" type="button" disabled>Apply speed</button>
+              <button class="quiet-button" id="microCancelSpeedCap" type="button" hidden>Cancel</button>
+            </div>
+            <div class="field-hint" id="microSpeedAvailability" aria-live="polite">Select a vehicle to see safe speed options.</div>
+          </div>
+        </div>
+      </section>
       <div class="micro-controls">
         <button class="primary-button" id="microPlay" type="button"><span id="microPlayIcon" aria-hidden="true">▶</span><span id="microPlayText">Play</span></button>
         <button class="quiet-button" id="microReset" type="button">Reset run</button>
@@ -85,6 +131,10 @@
         <option value="closure">Road fully closed</option>
       </select>
       <div class="field-hint" id="microScenarioHint">No barrier; vehicles use both lanes.</div>
+
+      <label class="field-label" for="microSeed">Run seed</label>
+      <input class="field-select" id="microSeed" type="number" min="0" max="4294967295" step="1" value="41">
+      <div class="field-hint">Use the same seed and settings to repeat a run.</div>
 
       <div class="conditional-setting" id="microLaneSetting">
         <label class="field-label" for="microClosedLane">Lane to close</label>
