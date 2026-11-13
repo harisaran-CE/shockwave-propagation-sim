@@ -1,12 +1,18 @@
 (() => {
   'use strict';
 
+  const APP_VERSION = '0.1.0';
   const ROAD_LENGTH = 500;
   const LANE_WIDTH_M = 4;
   const LATERAL_CLEARANCE_M = 0.15;
   const GEOMETRY_EPSILON_M = 1e-6;
   const SUBLANE_COUNT = 4;
-  const STEP = 0.025;
+  const SIM_CONFIG = Object.freeze({
+    SIM_DT: 0.025,
+    MAX_FRAME_DELTA: 0.1,
+    MAX_STEPS_PER_FRAME: 10
+  });
+  const STEP = SIM_CONFIG.SIM_DT;
   const ENTRY_SPILLBACK_DURATION = 3;
   const LANE_CHANGE_DURATION = 2.4;
   const MIN_LANE_GAIN = 0.9;
@@ -69,8 +75,31 @@
     seed: $('microSeed'),
     timeline: $('microTimeline'),
     timelineTime: $('microTimelineTime'),
+    timelineMarkers: $('microTimelineMarkers'),
+    themeToggle: $('microThemeToggle'),
+    crashReport: $('microCrashReport'),
+    crashCount: $('microCrashCount'),
+    crashSummary: $('microCrashSummary'),
+    crashVehicles: $('microCrashVehicles'),
+    crashExport: $('microCrashExport'),
+    editorToggle: $('microEditorToggle'),
+    editorBody: $('microEditorBody'),
+    scenarioSave: $('microScenarioSave'),
+    scenarioLoad: $('microScenarioLoad'),
+    riskSpeedWeight: $('microRiskSpeedWeight'),
+    riskDensityWeight: $('microRiskDensityWeight'),
+    riskConflictWeight: $('microRiskConflictWeight'),
+    riskCrashWeight: $('microRiskCrashWeight'),
+    riskIndex: $('microRiskIndex'),
+    riskBand: $('microRiskBand'),
     csv: $('microCsv'),
     json: $('microJson')
+  };
+  const errorBanner = $('microErrorBanner');
+  const appModel = {
+    mode: 'simulation',
+    settings: null,
+    risk: { speed: 0.35, density: 0.25, conflict: 0.25, crash: 0.15 }
   };
 
   const profiles = {
@@ -121,6 +150,8 @@
   const selectedVehicleIds = new Set();
   let speedEditActive = false;
   let selectionDrag = null;
+  let droppedTimeSeconds = 0;
+  let runningSlow = false;
 
   function seededRandom(seed) {
     let value = seed >>> 0 || 1;
@@ -222,14 +253,70 @@
     }
     return {
       time: 0, seed, vehicles, overtakes: 0, laneChanges: 0, preventedContacts: 0,
+      stepCount: 0,
       exited: 0, endReached: false, entryBlockedSince: null,
       nextId: initialFleet.length, random,
       nextArrival: 0,
       events: [],
       frames: [],
       eventLog: [],
+      crashes: [],
+      crashPairs: new Set(),
+      nextCrashId: 1,
+      settings: null,
       eventText: 'Ready. Change the settings or press Play to begin.'
     };
+  }
+
+  function observePotentialCollision(vehicle, leader, position, leaderPosition) {
+    if (!leader || leader.id < 0) return;
+    const pair = [vehicle.id, leader.id].sort((a, b) => a - b);
+    const pairKey = pair.join(':');
+    if (state.crashPairs.has(pairKey)) return;
+    const overlapLength = vehicle.position + vehicle.length / 2
+      - (leaderPosition - leader.length / 2);
+    const overlapWidth = (vehicle.width + leader.width) / 2
+      - Math.abs(vehicle.lateralPositionM - leader.lateralPositionM);
+    if (overlapLength <= 0 || overlapWidth <= 0) return;
+    const record = {
+      eventType: 'collision',
+      crashId: state.nextCrashId++,
+      timeSeconds: state.time,
+      impactPositionM: Number(((position + leaderPosition) / 2).toFixed(3)),
+      signalState: null,
+      cause: leader.kind === 'barrier' ? 'barrier-overlap' : 'following-distance-overlap',
+      severity: 'simulated-observation',
+      relativeSpeedKmh: Number((Math.abs(vehicle.speed - leader.speed) * 3.6).toFixed(3)),
+      riskIndex: null,
+      recordedAtStep: state.stepCount,
+      geometry: {
+        roadLengthM: ROAD_LENGTH,
+        laneWidthM: LANE_WIDTH_M,
+        overlapLengthM: Number(overlapLength.toFixed(3)),
+        overlapWidthM: Number(overlapWidth.toFixed(3))
+      },
+      vehicles: [vehicle, leader].map((item) => ({
+        vehicleId: item.id,
+        type: profiles[item.kind].label,
+        speedKmh: Number((item.speed * 3.6).toFixed(3)),
+        lane: item.lane + 1,
+        positionM: Number((item.id === vehicle.id ? position : leaderPosition).toFixed(3)),
+        lengthM: Number(item.length.toFixed(3)),
+        widthM: Number(item.width.toFixed(3)),
+        lateralPositionM: Number(item.lateralPositionM.toFixed(3)),
+        accelerationMps2: Number(item.acceleration.toFixed(3))
+      }))
+    };
+    record.riskIndex = riskSnapshot({
+      meanSpeedKmh: ((vehicle.speed + leader.speed) / 2) * 3.6,
+      densityVehiclesPerKmPerLane: state.vehicles.length / (ROAD_LENGTH / 1000 * 2),
+      contactsPrevented: state.preventedContacts
+    });
+    state.crashPairs.add(pairKey);
+    state.crashes.push(record);
+    state.eventLog.push(record);
+    state.eventText = `Collision observed between vehicle ${pair[0] + 1} and vehicle ${pair[1] + 1}.`;
+    renderCrashReport(record);
   }
 
   function barrierBlocksLane(lane) {
@@ -669,7 +756,10 @@
         );
         if (position > maximum) {
           // Reduce speed before clamping position so the next step stays consistent.
-          if (leader.id >= 0 && position > physicalMaximum) state.preventedContacts += 1;
+          if (leader.id >= 0 && position > physicalMaximum) {
+            state.preventedContacts += 1;
+            observePotentialCollision(vehicle, leader, position, leaderPosition);
+          }
           nextSpeed = Math.max(0, Math.min(
             speed,
             2 * (maximum - vehicle.position) / STEP - vehicle.speed
@@ -759,6 +849,7 @@
     }
     state.vehicles = remaining;
     state.time = Math.round((state.time + STEP) * 1000) / 1000;
+    state.stepCount += 1;
     if (state.time >= state.nextArrival) {
       if (addArrival()) {
         state.entryBlockedSince = null;
@@ -791,11 +882,13 @@
       vehicles: state.vehicles.map((vehicle) => ({ ...vehicle })),
       eventText: state.eventText,
       eventLog: state.eventLog.slice(-20),
+      crashes: state.crashes.slice(),
       settings: getSettings()
     });
     ui.timeline.max = String(state.frames.length - 1);
     if (viewFrameIndex === null) ui.timeline.value = String(state.frames.length - 1);
     updateTimelineReadout();
+    updateTimelineMarkers();
   }
 
   function roundRect(x, y, width, height, radius) {
@@ -952,8 +1045,8 @@
       ? selected.length === 1 ? `Vehicle ${selected[0].id + 1}` : `${selected.length} vehicles selected`
       : 'Select a vehicle on the road';
     ui.inspectorHelp.textContent = selected.length
-      ? 'Values update live. Congestion and safe speed options are calculated from each vehicle’s forward view.'
-      : 'Drag across the road to select one or more vehicles. Details are shown from each selected vehicle’s forward view.';
+      ? 'Values update live. Congestion and safe speed options are calculated from each vehicle forward view.'
+      : 'Drag across the road to select one or more vehicles. Details are shown from each selected vehicle forward view.';
     if (!selected.length) {
       ui.applySpeedCap.disabled = true;
       ui.cancelSpeedCap.hidden = true;
@@ -976,7 +1069,7 @@
       const result = options.find((item) => item.speed === Number(option.value));
       option.disabled = !result?.available;
       const label = `${option.value} km/h`;
-      option.textContent = result?.available ? label : `${label} — unavailable`;
+      option.textContent = result?.available ? label : `${label} - unavailable`;
     }
     if (!speedEditActive) {
       const currentTarget = selected.every((vehicle) => vehicle.requestedSpeedKmh !== null
@@ -990,8 +1083,8 @@
       || ui.selectedSpeedCap.selectedOptions[0]?.disabled;
     const minSafeSpeed = Math.min(...selected.map(safeSpeedFor));
     ui.speedAvailability.textContent = speedEditActive
-      ? 'Edit mode active — playback is slowed to 0.5× while you adjust the requested speed.'
-      : `Requested speed can reach ${minSafeSpeed.toFixed(0)} km/h safely from the selected vehicle${selected.length > 1 ? 's' : ''}’ forward view; distance rules still take priority.`;
+      ? 'Edit mode active - playback is slowed to 0.5x while you adjust the requested speed.'
+      : `Requested speed can reach ${minSafeSpeed.toFixed(0)} km/h safely from the selected vehicle${selected.length > 1 ? 's' : ''} forward view; distance rules still take priority.`;
     ui.cancelSpeedCap.hidden = !speedEditActive;
   }
 
@@ -1131,6 +1224,27 @@
       ctx.strokeRect(leftEdge, topEdge, selectionWidth, selectionHeight);
     }
     updateReadouts(displayState, displaySettings);
+    if (window.flowline3d) {
+      window.flowline3d.renderFrame({
+        scenario: displaySettings.scenario,
+        barrierPositionM: displaySettings.scenario === 'busy'
+          ? null
+          : (frame ? frame.barrierPositionM : barrierPositionM),
+        selectedVehicleIds: Array.from(selectedVehicleIds),
+        crashes: displayState.crashes || [],
+        timeSeconds: displayState.time,
+        vehicles: renderVehicles.map(({ vehicle, position, lateralPositionM }) => ({
+          id: vehicle.id,
+          kind: vehicle.kind,
+          position,
+          lateralPositionM,
+          length: vehicle.length,
+          width: vehicle.width,
+          speed: vehicle.speed,
+          acceleration: vehicle.acceleration
+        }))
+      });
+    }
     if (viewFrameIndex === null) updateInspector();
   }
 
@@ -1170,9 +1284,16 @@
     $('microDensity').innerHTML = `${density.toFixed(1)} <small>veh/km/lane</small>`;
     $('microExited').textContent = displayState.exited;
     $('microQueue').textContent = queueCount;
+    updateRiskReadout({
+      meanSpeedKmh: meanSpeed,
+      densityVehiclesPerKmPerLane: density,
+      contactsPrevented: displayState.preventedContacts
+    });
     ui.time.textContent = formatTime(displayState.time);
     ui.event.textContent = displayState.eventText;
+    ui.event.classList.toggle('is-alert', /stopped|contact|crash|conflict/i.test(displayState.eventText));
     updateTimelineReadout();
+    renderCrashReport(displayState.crashes && displayState.crashes[displayState.crashes.length - 1]);
   }
 
   function updateTimelineReadout() {
@@ -1183,8 +1304,47 @@
     ui.timeline.value = String(index);
   }
 
+  function updateTimelineMarkers() {
+    const markers = {
+      conflict: ui.timelineMarkers.querySelector('[data-event="conflict"]'),
+      braking: ui.timelineMarkers.querySelector('[data-event="braking"]'),
+      crash: ui.timelineMarkers.querySelector('[data-event="crash"]')
+    };
+    const firstConflict = state.frames.findIndex((frame) => frame.preventedContacts > 0);
+    const firstBraking = state.frames.findIndex((frame) => frame.queueAtBarrier > 0);
+    const firstCrash = state.frames.findIndex((frame) => frame.crashes && frame.crashes.length);
+    for (const [type, index] of Object.entries({ conflict: firstConflict, braking: firstBraking, crash: firstCrash })) {
+      const marker = markers[type];
+      if (!marker) continue;
+      marker.hidden = index < 0;
+      if (index >= 0) {
+        marker.style.left = `${(index / Math.max(1, state.frames.length - 1)) * 100}%`;
+        marker.dataset.frameIndex = String(index);
+      }
+    }
+    if (markers.crash && firstCrash >= 0) {
+      markers.crash.disabled = false;
+      markers.crash.hidden = false;
+      markers.crash.style.left = `${(firstCrash / Math.max(1, state.frames.length - 1)) * 100}%`;
+      markers.crash.dataset.frameIndex = String(firstCrash);
+    }
+  }
+
+  function renderCrashReport(record = state.crashes[state.crashes.length - 1]) {
+    if (!record) {
+      ui.crashReport.hidden = true;
+      return;
+    }
+    ui.crashReport.hidden = false;
+    ui.crashCount.textContent = `${state.crashes.length} EVENT${state.crashes.length === 1 ? '' : 'S'}`;
+    ui.crashSummary.textContent = `Observed at ${formatTime(record.timeSeconds)} | position ${record.impactPositionM.toFixed(1)} m | overlap ${record.geometry.overlapLengthM.toFixed(2)} m | relative speed ${record.relativeSpeedKmh.toFixed(1)} km/h | ${record.cause}`;
+    ui.crashVehicles.innerHTML = record.vehicles.map((vehicle) => `
+      <tr><td>Vehicle ${vehicle.vehicleId + 1}</td><td>${vehicle.type}</td><td>${vehicle.speedKmh.toFixed(1)} km/h</td><td>${vehicle.lane}</td><td>${vehicle.positionM.toFixed(1)} m</td></tr>
+    `).join('');
+  }
+
   function getSettings() {
-    return {
+    const settings = {
       roadLengthM: ROAD_LENGTH,
       lanes: 2,
       seed: Number(ui.seed.value),
@@ -1195,6 +1355,7 @@
       arrivalVariationPercent: Number(ui.variation.value),
       speedLimitKmh: Number(ui.speedLimit.value),
       durationSeconds: Number(ui.duration.value),
+      riskConfig: { ...appModel.risk },
       selectedVehicleIds: Array.from(selectedVehicleIds).sort((a, b) => a - b),
       requestedVehicleSpeedsKmh: state
         ? state.vehicles
@@ -1202,6 +1363,47 @@
           .map((vehicle) => ({ vehicleId: vehicle.id, requestedSpeedKmh: vehicle.requestedSpeedKmh }))
         : []
     };
+    appModel.settings = settings;
+    if (state) state.settings = settings;
+    return settings;
+  }
+
+  function readRiskConfig() {
+    const values = {
+      speed: Number(ui.riskSpeedWeight.value),
+      density: Number(ui.riskDensityWeight.value),
+      conflict: Number(ui.riskConflictWeight.value),
+      crash: Number(ui.riskCrashWeight.value)
+    };
+    const total = Object.values(values).reduce((sum, value) =>
+      sum + (Number.isFinite(value) && value >= 0 ? value : 0), 0) || 1;
+    for (const key of Object.keys(values)) values[key] = Math.max(0, values[key] || 0) / total;
+    appModel.risk = values;
+    for (const [key, value] of Object.entries(values)) ui[`risk${key[0].toUpperCase()}${key.slice(1)}Weight`].value = value.toFixed(2);
+    return values;
+  }
+
+  function riskSnapshot(snapshot = metricsSnapshot()) {
+    const risk = appModel.risk;
+    const speedComponent = Math.min(1, Math.max(0, snapshot.meanSpeedKmh / 100));
+    const densityComponent = Math.min(1, Math.max(0, snapshot.densityVehiclesPerKmPerLane / 45));
+    const conflictComponent = Math.min(1, snapshot.contactsPrevented / 12);
+    const crashComponent = Math.min(1, state.crashes.length / 3);
+    const score = (speedComponent * risk.speed + densityComponent * risk.density
+      + conflictComponent * risk.conflict + crashComponent * risk.crash) * 100;
+    return {
+      score: Number(score.toFixed(2)),
+      band: score >= 70 ? 'HIGH' : score >= 35 ? 'MODERATE' : 'LOW',
+      components: { speed: speedComponent, density: densityComponent, conflict: conflictComponent, crash: crashComponent }
+    };
+  }
+
+  function updateRiskReadout(snapshot = metricsSnapshot()) {
+    const result = riskSnapshot(snapshot);
+    ui.riskIndex.textContent = result.score.toFixed(1);
+    ui.riskBand.textContent = result.band;
+    ui.riskBand.dataset.risk = result.band.toLowerCase();
+    return result;
   }
 
   function metricsSnapshot() {
@@ -1254,22 +1456,22 @@
     const selectedIds = Array.from(selectedVehicleIds).sort((a, b) => a - b);
     const selectedIdCell = selectedIds.map((id) => `Vehicle ${id + 1}`).join('; ');
     const columns = [
-      'seed', 'scenario', 'closed_lane', 'barrier_position_m', 'average_arrivals_per_minute',
+      'app_version', 'seed', 'scenario', 'closed_lane', 'barrier_position_m', 'average_arrivals_per_minute',
       'arrival_variation_percent', 'speed_limit_kmh', 'duration_seconds',
       'time_seconds', 'barrier_position_at_sample_m', 'vehicles_on_road', 'cars', 'motorcycles', 'auto_rickshaws',
       'buses', 'trucks', 'mean_speed_kmh', 'density_vehicles_per_km_per_lane',
       'queue_at_barrier', 'exited_vehicles', 'completed_overtakes', 'lane_changes',
-      'contacts_prevented', 'selected_vehicle_count', 'selected_vehicle_ids', 'selection_highlight'
+      'contacts_prevented', 'dropped_time_seconds', 'selected_vehicle_count', 'selected_vehicle_ids', 'selection_highlight'
     ];
     const rows = exportRows().map((row) => [
-      settings.seed, settings.scenario, settings.closedLane ?? '', settings.barrierPositionM ?? '',
+      APP_VERSION, settings.seed, settings.scenario, settings.closedLane ?? '', settings.barrierPositionM ?? '',
       settings.averageArrivalsPerMinute, settings.arrivalVariationPercent,
       settings.speedLimitKmh, settings.durationSeconds,
       row.timeSeconds, row.barrierPositionM ?? '', row.vehiclesOnRoad, row.vehicleCounts.car, row.vehicleCounts.motorcycle,
       row.vehicleCounts.rickshaw, row.vehicleCounts.bus, row.vehicleCounts.truck,
       row.meanSpeedKmh.toFixed(3), row.densityVehiclesPerKmPerLane.toFixed(3),
       row.queueAtBarrier, row.exitedVehicles, row.completedOvertakes, row.laneChanges,
-      row.contactsPrevented, selectedIds.length, selectedIdCell,
+      row.contactsPrevented, droppedTimeSeconds.toFixed(9), selectedIds.length, selectedIdCell,
       selectedIds.length ? 'HIGHLIGHTED' : ''
     ].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','));
     download('flowline-vehicle-run.csv', [columns.join(','), ...rows].join('\n'), 'text/csv;charset=utf-8');
@@ -1278,8 +1480,14 @@
   function exportJson() {
     if (!settingsAreValid()) return;
     download('flowline-vehicle-run.json', JSON.stringify({
+      appVersion: APP_VERSION,
       model: 'individual-vehicle',
       settings: getSettings(),
+      metadata: {
+        simDtSeconds: SIM_CONFIG.SIM_DT,
+        droppedTimeSeconds,
+        riskIndex: riskSnapshot()
+      },
       summary: metricsSnapshot(),
       selectedVehicles: selectedVehicles().map((vehicle) => ({
         selected: true,
@@ -1292,28 +1500,95 @@
         forwardView: congestionDetails(vehicle)
       })),
       samples: exportRows(),
+      crashEvents: state.crashes,
       limitations: 'Illustrative, uncalibrated vehicle behavior; not for engineering or safety decisions.'
     }, null, 2), 'application/json');
   }
 
+  function scenarioDocument() {
+    return {
+      format: 'flowline-scenario',
+      version: 1,
+      appVersion: APP_VERSION,
+      settings: getSettings(),
+      risk: { ...appModel.risk }
+    };
+  }
+
+  function loadScenario(documentData) {
+    if (!documentData || documentData.format !== 'flowline-scenario'
+      || !documentData.settings) throw new Error('This file is not a Flowline scenario.');
+    const settings = documentData.settings;
+    ui.scenario.value = ['busy', 'partial', 'closure'].includes(settings.scenario)
+      ? settings.scenario : 'busy';
+    if (settings.closedLane) ui.closedLane.value = String(Number(settings.closedLane) - 1);
+    if (settings.barrierPositionM !== null && settings.barrierPositionM !== undefined) {
+      barrierPositionM = Number(settings.barrierPositionM);
+      ui.barrierPosition.value = String(barrierPositionM);
+    }
+    for (const [control, key] of [[ui.seed, 'seed'], [ui.arrivalRate, 'averageArrivalsPerMinute'],
+      [ui.variation, 'arrivalVariationPercent'], [ui.speedLimit, 'speedLimitKmh'],
+      [ui.duration, 'durationSeconds']]) {
+      if (settings[key] !== undefined) control.value = String(settings[key]);
+    }
+    if (documentData.risk) {
+      for (const [key, input] of [['speed', ui.riskSpeedWeight], ['density', ui.riskDensityWeight],
+        ['conflict', ui.riskConflictWeight], ['crash', ui.riskCrashWeight]]) {
+        if (documentData.risk[key] !== undefined) input.value = String(documentData.risk[key]);
+      }
+      readRiskConfig();
+    }
+    updateScenarioControls();
+    reset();
+  }
+
   function setRunning(value) {
     running = value;
-    ui.status.textContent = running ? 'IN MOTION' : (
+    ui.status.textContent = runningSlow ? 'RUNNING SLOW' : running ? 'IN MOTION' : (
       viewFrameIndex !== null ? 'HISTORY' : state.endReached ? 'QUEUE SPILLBACK' : (
         state.time >= Number(ui.duration.value) ? 'COMPLETE' : (state.time ? 'PAUSED' : 'READY')
       )
     );
     ui.status.classList.toggle('is-running', running);
-    ui.playIcon.textContent = running ? 'Ⅱ' : '▶';
+    ui.status.classList.toggle('is-history', viewFrameIndex !== null);
+    ui.status.classList.toggle('is-congestion', !running && state.endReached);
+    ui.status.classList.toggle('is-complete', !running && !state.endReached
+      && state.time >= Number(ui.duration.value));
+    ui.playIcon.textContent = running ? '||' : '>';
     ui.playText.textContent = running ? 'Pause' : viewFrameIndex !== null ? 'Replay from here' : (
       state.endReached || state.time >= Number(ui.duration.value)
         ? 'Run again' : (state.time ? 'Resume' : 'Play')
     );
   }
 
+  function showNumericalError(vehicle, field) {
+    running = false;
+    window.cancelAnimationFrame(rafId);
+    const message = `Simulation paused: non-finite ${field} for vehicle ${vehicle.id}.`;
+    ui.event.textContent = message;
+    if (errorBanner) {
+      errorBanner.textContent = message;
+      errorBanner.hidden = false;
+    }
+    setRunning(false);
+  }
+
+  function validateNumericalState() {
+    for (const vehicle of state.vehicles) {
+      for (const field of ['position', 'speed', 'acceleration', 'lateralPositionM']) {
+        if (!Number.isFinite(vehicle[field])) {
+          showNumericalError(vehicle, field);
+          return false;
+        }
+      }
+    }
+    return Number.isFinite(state.time);
+  }
+
   function animate(now) {
     if (!running) return;
-    const elapsed = previousTime ? Math.min(0.1, (now - previousTime) / 1000) : 0;
+    const elapsed = previousTime
+      ? Math.min(SIM_CONFIG.MAX_FRAME_DELTA, (now - previousTime) / 1000) : 0;
     previousTime = now;
     if (replayingHistory) {
       replayAccumulator += elapsed * Number(ui.speed.value);
@@ -1334,11 +1609,24 @@
       return;
     }
     accumulator += elapsed * Number(ui.speed.value) * (speedEditActive ? 0.5 : 1);
-    while (accumulator >= STEP && !state.endReached) {
+    let stepsThisFrame = 0;
+    while (accumulator >= STEP && !state.endReached
+      && stepsThisFrame < SIM_CONFIG.MAX_STEPS_PER_FRAME) {
       step();
       accumulator -= STEP;
+      stepsThisFrame += 1;
+    }
+    if (accumulator >= STEP && !state.endReached) {
+      droppedTimeSeconds += accumulator;
+      accumulator = 0;
+      runningSlow = true;
+      ui.status.textContent = 'RUNNING SLOW';
+    } else {
+      runningSlow = false;
+      if (running) ui.status.textContent = 'IN MOTION';
     }
     if (state.endReached) accumulator = 0;
+    if (!validateNumericalState()) return;
     draw();
     if (state.endReached || state.time >= Number(ui.duration.value)) {
       if (state.frames[state.frames.length - 1]?.timeSeconds !== state.time) recordFrame();
@@ -1374,10 +1662,14 @@
     if (!settingsAreValid()) return false;
     if (rafId) window.cancelAnimationFrame(rafId);
     state = createState();
+    state.settings = getSettings();
+    if (errorBanner) errorBanner.hidden = true;
     viewFrameIndex = null;
     replayingHistory = false;
     replayAccumulator = 0;
     accumulator = 0;
+    droppedTimeSeconds = 0;
+    runningSlow = false;
     previousTime = 0;
     selectedVehicleIds.clear();
     speedEditActive = false;
@@ -1411,7 +1703,7 @@
     } else if (active && ui.barrierPosition.validity.rangeOverflow) {
       ui.barrierPosition.setCustomValidity(`Enter a barrier distance no greater than ${ROAD_LENGTH - 50} metres.`);
     }
-    ui.variationValue.textContent = `±${ui.variation.value}%`;
+    ui.variationValue.textContent = `+/-${ui.variation.value}%`;
     if (ui.scenario.value === 'closure') {
       ui.scenarioHint.textContent = `Both lanes stop at ${barrierPositionM} m.`;
     } else if (ui.scenario.value === 'partial') {
@@ -1521,6 +1813,13 @@
   canvas.addEventListener('pointercancel', stopBarrierDrag);
 
   ui.play.addEventListener('click', start);
+  document.addEventListener('keydown', (event) => {
+    if (event.target.matches('input, select, textarea, button, a, summary')) return;
+    if (event.code === 'Space' || event.code === 'Enter') {
+      event.preventDefault();
+      start();
+    }
+  });
   ui.reset.addEventListener('click', reset);
   ui.clearSelection.addEventListener('click', (event) => {
     event.stopPropagation();
@@ -1541,6 +1840,18 @@
     recordFrame(true);
     updateInspector();
     draw();
+  });
+  ui.timelineMarkers.addEventListener('click', (event) => {
+    const marker = event.target.closest('.timeline-marker');
+    if (!marker || marker.disabled || marker.hidden) return;
+    ui.timeline.value = marker.dataset.frameIndex;
+    ui.timeline.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  ui.themeToggle.addEventListener('click', () => {
+    const light = document.documentElement.dataset.theme !== 'light';
+    document.documentElement.dataset.theme = light ? 'light' : 'dark';
+    ui.themeToggle.textContent = light ? 'DARK VIEW' : 'LIGHT VIEW';
+    ui.themeToggle.setAttribute('aria-pressed', String(light));
   });
   ui.cancelSpeedCap.addEventListener('click', () => {
     speedEditActive = false;
@@ -1563,6 +1874,7 @@
   ]) {
     control.addEventListener('change', () => {
       updateScenarioControls();
+      readRiskConfig();
       reset();
     });
   }
@@ -1582,11 +1894,131 @@
     updateScenarioControls();
   });
   ui.variation.addEventListener('input', () => {
-    ui.variationValue.textContent = `±${ui.variation.value}%`;
+    ui.variationValue.textContent = `+/-${ui.variation.value}%`;
   });
   ui.csv.addEventListener('click', exportCsv);
   ui.json.addEventListener('click', exportJson);
+  ui.crashExport.addEventListener('click', () => {
+    if (!state.crashes.length) return;
+    download('flowline-crash-report.json', JSON.stringify({
+      model: 'individual-vehicle',
+      reportType: 'report-only collision observation',
+      appVersion: APP_VERSION,
+      settings: getSettings(),
+      crashEvents: state.crashes,
+      limitations: 'Illustrative, uncalibrated vehicle behavior; not for engineering or safety decisions.'
+    }, null, 2), 'application/json');
+  });
+  ui.editorToggle.addEventListener('click', () => {
+    appModel.mode = appModel.mode === 'editor' ? 'simulation' : 'editor';
+    ui.editorBody.hidden = appModel.mode !== 'editor';
+    ui.editorToggle.setAttribute('aria-pressed', String(appModel.mode === 'editor'));
+    ui.editorToggle.textContent = appModel.mode === 'editor' ? 'Close editor' : 'Editor mode';
+  });
+  ui.scenarioSave.addEventListener('click', () => {
+    download('flowline-scenario.json', JSON.stringify(scenarioDocument(), null, 2), 'application/json');
+  });
+  ui.scenarioLoad.addEventListener('change', () => {
+    const file = ui.scenarioLoad.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try { loadScenario(JSON.parse(reader.result)); }
+      catch (error) {
+        ui.event.textContent = `Scenario not loaded: ${error.message}`;
+        ui.event.classList.add('is-alert');
+      }
+      ui.scenarioLoad.value = '';
+    };
+    reader.readAsText(file);
+  });
+  for (const input of [ui.riskSpeedWeight, ui.riskDensityWeight,
+    ui.riskConflictWeight, ui.riskCrashWeight]) {
+    input.addEventListener('change', () => {
+      readRiskConfig();
+      draw();
+    });
+  }
+
+  function canonicalObservableState() {
+    const queuedAtBarrier = state.vehicles.filter((vehicle) =>
+      barrierBlocksLane(vehicle.lane)
+      && vehicle.position + vehicle.length / 2 >= barrierPositionM - 60
+      && vehicle.position + vehicle.length / 2 < barrierPositionM
+      && vehicle.speed < 0.7
+    ).length;
+    return {
+      stepCount: state.stepCount,
+      timeSeconds: state.time,
+      vehicles: state.vehicles
+        .slice()
+        .sort((left, right) => left.id - right.id)
+        .map((vehicle) => ({
+          id: vehicle.id,
+          type: vehicle.kind,
+          lane: vehicle.lane,
+          position: vehicle.position,
+          lateralOffset: vehicle.lateralPositionM - vehicle.lane * LANE_WIDTH_M,
+          speed: vehicle.speed,
+          acceleration: vehicle.acceleration,
+          laneChange: {
+            fromLane: vehicle.laneChangeFrom,
+            elapsed: vehicle.laneChangeElapsed,
+            duration: vehicle.lateralChangeDuration,
+            fromOffset: vehicle.lateralChangeFromM === null
+              ? null
+              : vehicle.lateralChangeFromM - vehicle.lane * LANE_WIDTH_M,
+            targetOffset: vehicle.lateralChangeTargetM === null
+              ? null
+              : vehicle.lateralChangeTargetM - vehicle.lane * LANE_WIDTH_M,
+            progress: vehicle.lateralChangeFromM === null
+              ? null
+              : vehicle.lateralChangeElapsed / vehicle.lateralChangeDuration
+          }
+        })),
+      counters: {
+        vehiclesOnRoad: state.vehicles.length,
+        exited: state.exited,
+        queuedAtBarrier,
+        completedOvertakes: state.overtakes,
+        laneChanges: state.laneChanges,
+        contactsPrevented: state.preventedContacts
+      },
+      barrier: {
+        scenario: ui.scenario.value,
+        positionM: ui.scenario.value === 'busy' ? null : barrierPositionM,
+        closedLane: ui.scenario.value === 'partial' ? Number(ui.closedLane.value) : null
+      },
+      roadSettings: getSettings()
+    };
+  }
+
+  window.__flowlineTest = {
+    run(seed, settings = {}, steps = 0) {
+      ui.seed.value = String(seed);
+      ui.scenario.value = settings.scenario ?? 'busy';
+      if (settings.closedLane !== undefined) ui.closedLane.value = String(settings.closedLane);
+      if (settings.barrierPositionM !== undefined) {
+        barrierPositionM = Number(settings.barrierPositionM);
+        ui.barrierPosition.value = String(barrierPositionM);
+      }
+      if (settings.arrivalRate !== undefined) ui.arrivalRate.value = String(settings.arrivalRate);
+      else ui.arrivalRate.value = '24';
+      if (settings.variation !== undefined) ui.variation.value = String(settings.variation);
+      else ui.variation.value = '25';
+      if (settings.speedLimit !== undefined) ui.speedLimit.value = String(settings.speedLimit);
+      else ui.speedLimit.value = '60';
+      updateScenarioControls();
+      if (!reset()) throw new Error('Unable to reset the simulation for testing.');
+      for (let stepIndex = 0; stepIndex < steps; stepIndex += 1) step();
+      draw();
+      return canonicalObservableState();
+    },
+    snapshot: canonicalObservableState
+  };
+
   window.addEventListener('resize', resize);
+  window.addEventListener('flowline3dready', draw);
   if ('ResizeObserver' in window) new ResizeObserver(resize).observe(canvas);
   updateScenarioControls();
   reset();

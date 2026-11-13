@@ -1,7 +1,7 @@
-FLOWLINE — BROWSER EDITION
+FLOWLINE - BROWSER EDITION
 
 Start using the app
-1. If you received this as a ZIP, right-click it in File Explorer and choose “Extract All…”.
+1. If you received this as a ZIP, right-click it in File Explorer and choose "Extract All".
 2. Open the extracted Flowline-Browser folder.
 3. Double-click index.html. It opens in your browser; no terminal, Python, installer, or account is needed.
 
@@ -28,6 +28,10 @@ accelerate normally when a moved barrier is far enough ahead, and brake only
 when it is within a safe stopping distance. Vehicles have larger, clearer
 shapes, and their apparent lengths do not shrink when traffic gets close. Use
 Play, Pause, or Reset, and download run samples as CSV or JSON.
+Editor mode exposes a single scenario state for editing, JSON save/load, and a
+configurable 0-100 risk index based on speed, density, prevented contacts, and
+simulated crash observations. Crash records include timing, geometry, relative
+speed, cause, and the risk snapshot at observation time.
 
 Readouts show vehicle counts by type, mean speed (km/h), density (vehicles per
 kilometre per lane), vehicles that exited, vehicles queued near the barrier,

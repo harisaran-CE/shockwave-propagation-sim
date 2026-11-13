@@ -1,0 +1,123 @@
+{
+  "app": "Flowline browser microscopic simulation",
+  "simDtSeconds": 0.025,
+  "hashAlgorithm": "FNV-1a 32-bit over JSON canonical state with numbers rounded to 9 decimals",
+  "captureMethod": "window.__flowlineTest.run(seed, settings, steps)",
+  "defaultSettings": {
+    "scenario": "busy",
+    "arrivalRate": 24,
+    "variation": 25,
+    "speedLimit": 60,
+    "barrierPositionM": 320
+  },
+  "captures": [
+    {
+      "name": "default",
+      "seed": 11,
+      "steps": 1200,
+      "simulatedTimeSeconds": 30,
+      "hash": "cb108719",
+      "repeatHash": "cb108719",
+      "repeatMatched": true
+    },
+    {
+      "name": "default",
+      "seed": 11,
+      "steps": 2400,
+      "simulatedTimeSeconds": 60,
+      "hash": "41e87f96",
+      "repeatHash": "41e87f96",
+      "repeatMatched": true
+    },
+    {
+      "name": "default",
+      "seed": 41,
+      "steps": 1200,
+      "simulatedTimeSeconds": 30,
+      "hash": "5be5ef69",
+      "repeatHash": "5be5ef69",
+      "repeatMatched": true
+    },
+    {
+      "name": "default",
+      "seed": 41,
+      "steps": 2400,
+      "simulatedTimeSeconds": 60,
+      "hash": "c6e67dbd",
+      "repeatHash": "c6e67dbd",
+      "repeatMatched": true
+    },
+    {
+      "name": "default",
+      "seed": 97,
+      "steps": 1200,
+      "simulatedTimeSeconds": 30,
+      "hash": "4871ab2f",
+      "repeatHash": "4871ab2f",
+      "repeatMatched": true
+    },
+    {
+      "name": "default",
+      "seed": 97,
+      "steps": 2400,
+      "simulatedTimeSeconds": 60,
+      "hash": "93a833a2",
+      "repeatHash": "93a833a2",
+      "repeatMatched": true
+    },
+    {
+      "name": "partial-closure",
+      "seed": 11,
+      "steps": 1200,
+      "simulatedTimeSeconds": 30,
+      "settings": {
+        "scenario": "partial",
+        "closedLane": 1,
+        "barrierPositionM": 320
+      },
+      "hash": "ce095228",
+      "repeatHash": "ce095228",
+      "repeatMatched": true
+    },
+    {
+      "name": "partial-closure",
+      "seed": 11,
+      "steps": 2400,
+      "simulatedTimeSeconds": 60,
+      "settings": {
+        "scenario": "partial",
+        "closedLane": 1,
+        "barrierPositionM": 320
+      },
+      "hash": "dec9b5d7",
+      "repeatHash": "dec9b5d7",
+      "repeatMatched": true
+    },
+    {
+      "name": "full-closure",
+      "seed": 11,
+      "steps": 1200,
+      "simulatedTimeSeconds": 30,
+      "settings": {
+        "scenario": "closure",
+        "barrierPositionM": 320
+      },
+      "hash": "efcf602e",
+      "repeatHash": "efcf602e",
+      "repeatMatched": true
+    },
+    {
+      "name": "full-closure",
+      "seed": 11,
+      "steps": 2400,
+      "simulatedTimeSeconds": 60,
+      "settings": {
+        "scenario": "closure",
+        "barrierPositionM": 320
+      },
+      "hash": "225c8778",
+      "repeatHash": "225c8778",
+      "repeatMatched": true
+    }
+  ]
+}
