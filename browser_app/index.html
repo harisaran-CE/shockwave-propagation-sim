@@ -5,16 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f3f5f2">
   <meta name="description" content="Simulate individual cars, motorcycles, auto-rickshaws, buses and trucks, with lane changes and overtaking.">
-  <title>Flowline — Vehicle Traffic Studio</title>
+  <title>Flowline - Vehicle Traffic Studio</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="microscopic.css">
   <script src="microscopic.js" defer></script>
+  <script type="module" src="flowline-3d.js"></script>
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="index.html" aria-label="Flowline vehicle traffic studio"><span class="brand-mark" aria-hidden="true">↗</span><span>flowline</span></a>
-    <span class="top-note">INDIVIDUAL VEHICLE SIMULATION <i></i> BROWSER EDITION</span>
+    <a class="brand" href="index.html" aria-label="Flowline vehicle traffic studio"><span class="brand-mark" aria-hidden="true">FL</span><span>flowline</span></a>
+    <div class="topbar-tools">
+      <span class="top-note">INDIVIDUAL VEHICLE SIMULATION <i></i> BROWSER EDITION</span>
+      <button class="theme-toggle" id="microThemeToggle" type="button" aria-pressed="false">LIGHT VIEW</button>
+    </div>
   </header>
 
   <main class="micro-layout">
@@ -27,21 +31,44 @@
     <section class="micro-workspace" aria-label="Microscopic vehicle simulation">
       <div class="scene-head">
         <div>
-          <div class="section-kicker">LIVE VEHICLE VIEW <span class="scene-status" id="microStatus">READY</span></div>
+          <div class="section-kicker">LIVE VEHICLE VIEW <span class="scene-status" id="microStatus" aria-live="polite">READY</span></div>
           <h2>Every marker is a vehicle</h2>
         </div>
-        <div class="clock"><span class="clock-label">SIMULATED TIME</span><strong id="microTime">00:00</strong></div>
+        <div class="scene-tools">
+          <div class="view-toggle" role="group" aria-label="Scene view">
+            <button id="microView2d" class="view-toggle-button is-active" type="button" aria-pressed="true">2D</button>
+            <button id="microView3d" class="view-toggle-button" type="button" aria-pressed="false">3D</button>
+          </div>
+          <div class="view-toggle scene-3d-controls" role="group" aria-label="3D camera mode">
+            <button class="view-toggle-button is-active" type="button" data-3d-mode="chase">Chase</button>
+            <button class="view-toggle-button" type="button" data-3d-mode="orbit">Orbit</button>
+            <button class="view-toggle-button" type="button" data-3d-mode="top">Top</button>
+            <button class="view-toggle-button" type="button" data-3d-mode="cinematic">Cinematic</button>
+          </div>
+          <button class="scene-3d-option" type="button" data-3d-trails aria-pressed="true">Trails</button>
+          <button class="scene-3d-option" type="button" data-3d-low-graphics aria-pressed="true">Low graphics</button>
+          <button class="scene-3d-option" type="button" data-3d-freeze aria-pressed="false">Freeze frame</button>
+          <div class="clock"><span class="clock-label">SIMULATED TIME</span><strong id="microTime">00:00</strong></div>
+        </div>
       </div>
 
       <div class="micro-road-wrap">
         <canvas id="microRoad" role="img" aria-label="Two-lane road with four marked paths in each lane, showing individually simulated vehicles. Drag across the road to select vehicles; drag the barrier marker to move it during the simulation."></canvas>
+        <canvas id="microRoad3d" role="img" aria-label="Three-dimensional measured road scene showing the simulated vehicles and barrier." hidden></canvas>
       </div>
       <div class="field-hint barrier-drag-hint">Drag the barrier itself on the road to move it while the simulation runs.</div>
       <div class="micro-distance"><span>0 m <small>UPSTREAM</small></span><span>500 m <small>DOWNSTREAM</small></span></div>
 
       <div class="micro-timeline">
         <div class="timeline-labels"><span>RUN HISTORY</span><span id="microTimelineTime">00:00</span></div>
-        <input id="microTimeline" type="range" min="0" max="0" value="0" step="1" aria-label="Simulation history">
+        <div class="timeline-track">
+          <input id="microTimeline" type="range" min="0" max="0" value="0" step="1" aria-label="Simulation history">
+          <div class="timeline-markers" id="microTimelineMarkers" aria-label="Run events">
+            <button type="button" class="timeline-marker marker-conflict" data-event="conflict" aria-label="First conflict" hidden>CONFLICT</button>
+            <button type="button" class="timeline-marker marker-braking" data-event="braking" aria-label="First braking event" hidden>BRAKING</button>
+            <button type="button" class="timeline-marker marker-crash" data-event="crash" aria-label="Crash detected" hidden disabled>CRASH</button>
+          </div>
+        </div>
       </div>
 
       <div class="micro-legend" aria-label="Vehicle types">
@@ -64,6 +91,51 @@
       </div>
 
       <div class="micro-event" id="microEvent" aria-live="polite">Vehicles are ready. Press Play to watch them move and pass.</div>
+      <section class="flowline-editor" id="flowlineEditor" aria-label="Scenario editor">
+        <div class="editor-head">
+          <div>
+            <div class="section-kicker">FLOWLINE EDITOR</div>
+            <h2>Scenario workspace</h2>
+          </div>
+          <div class="editor-actions">
+            <button class="quiet-button" id="microEditorToggle" type="button" aria-pressed="false">Editor mode</button>
+            <button class="download-button" id="microScenarioSave" type="button">Save scenario</button>
+            <label class="download-button" for="microScenarioLoad">Load scenario</label>
+            <input id="microScenarioLoad" type="file" accept="application/json,.json" hidden>
+          </div>
+        </div>
+        <div class="editor-body" id="microEditorBody" hidden>
+          <p class="field-hint">Edit the current scenario, save it as JSON, or load a previously saved scenario. The simulation state remains the single source of truth.</p>
+          <div class="risk-config">
+            <div class="section-kicker">RISK INDEX CONFIGURATION</div>
+            <div class="editor-grid">
+              <label class="field-label" for="microRiskSpeedWeight">Speed weight <input class="field-select" id="microRiskSpeedWeight" type="number" min="0" max="1" step="0.05" value="0.35"></label>
+              <label class="field-label" for="microRiskDensityWeight">Density weight <input class="field-select" id="microRiskDensityWeight" type="number" min="0" max="1" step="0.05" value="0.25"></label>
+              <label class="field-label" for="microRiskConflictWeight">Conflict weight <input class="field-select" id="microRiskConflictWeight" type="number" min="0" max="1" step="0.05" value="0.25"></label>
+              <label class="field-label" for="microRiskCrashWeight">Crash weight <input class="field-select" id="microRiskCrashWeight" type="number" min="0" max="1" step="0.05" value="0.15"></label>
+            </div>
+            <div class="risk-readout">Risk index <strong id="microRiskIndex">0.0</strong><span id="microRiskBand">LOW</span></div>
+          </div>
+        </div>
+      </section>
+      <div class="micro-error-banner" id="microErrorBanner" role="alert" hidden></div>
+      <section class="crash-report" id="microCrashReport" aria-label="Crash report" hidden>
+        <div class="crash-report-head">
+          <div>
+            <div class="section-kicker">CRASH RECORD <span id="microCrashCount">0 EVENTS</span></div>
+            <h2>Collision observation</h2>
+          </div>
+          <button class="download-button" id="microCrashExport" type="button">Export report</button>
+        </div>
+        <p class="crash-report-note">Report-only overlap observation. Traffic signals are not modeled.</p>
+        <div class="crash-report-summary" id="microCrashSummary"></div>
+        <div class="crash-report-table-wrap">
+          <table class="crash-report-table">
+            <thead><tr><th>Vehicle</th><th>Type</th><th>Speed</th><th>Lane</th><th>Position</th></tr></thead>
+            <tbody id="microCrashVehicles"></tbody>
+          </table>
+        </div>
+      </section>
       <details class="vehicle-inspector" aria-label="Selected vehicle inspector" open>
         <summary class="inspector-head">
           <div>
@@ -76,12 +148,36 @@
         <div class="inspector-empty" id="microInspectorEmpty">No vehicle selected.</div>
         <div class="inspector-content" id="microInspectorContent" hidden>
           <div class="vehicle-detail-grid">
-            <div><span>TYPE</span><strong id="microSelectedType">—</strong></div>
-            <div><span>LIVE SPEED</span><strong id="microSelectedSpeed">—</strong></div>
-            <div><span>LANE</span><strong id="microSelectedLane">—</strong></div>
-            <div><span>FORWARD GAP</span><strong id="microSelectedGap">—</strong></div>
-            <div><span>LEADER</span><strong id="microSelectedLeader">—</strong></div>
-            <div><span>ROAD STATUS</span><strong id="microSelectedStatus">—</strong></div>
+            <div class="telemetry-cell">
+              <span class="telemetry-label">Vehicle type <small>CLASS</small></span>
+              <strong id="microSelectedType">-</strong>
+              <svg class="telemetry-spark" viewBox="0 0 100 18" aria-hidden="true"><path d="M1 14 L18 13 L34 14 L50 9 L66 11 L82 5 L99 7"></path></svg>
+            </div>
+            <div class="telemetry-cell">
+              <span class="telemetry-label">Current speed <small>KM/H</small></span>
+              <strong id="microSelectedSpeed">-</strong>
+              <svg class="telemetry-spark" viewBox="0 0 100 18" aria-hidden="true"><path d="M1 14 L18 11 L34 12 L50 7 L66 9 L82 4 L99 5"></path></svg>
+            </div>
+            <div class="telemetry-cell">
+              <span class="telemetry-label">Travel lane <small>LANE INDEX</small></span>
+              <strong id="microSelectedLane">-</strong>
+              <svg class="telemetry-spark" viewBox="0 0 100 18" aria-hidden="true"><path d="M1 12 L30 12 L31 6 L63 6 L64 11 L99 11"></path></svg>
+            </div>
+            <div class="telemetry-cell">
+              <span class="telemetry-label">Space ahead <small>FORWARD GAP</small></span>
+              <strong id="microSelectedGap">-</strong>
+              <svg class="telemetry-spark" viewBox="0 0 100 18" aria-hidden="true"><path d="M1 5 L18 6 L34 8 L50 7 L66 11 L82 12 L99 15"></path></svg>
+            </div>
+            <div class="telemetry-cell">
+              <span class="telemetry-label">Vehicle ahead <small>LEADER</small></span>
+              <strong id="microSelectedLeader">-</strong>
+              <svg class="telemetry-spark" viewBox="0 0 100 18" aria-hidden="true"><path d="M1 13 L18 13 L35 10 L52 12 L69 8 L85 10 L99 6"></path></svg>
+            </div>
+            <div class="telemetry-cell">
+              <span class="telemetry-label">Road condition <small>STATUS</small></span>
+              <strong id="microSelectedStatus">-</strong>
+              <svg class="telemetry-spark" viewBox="0 0 100 18" aria-hidden="true"><path d="M1 11 L28 11 L38 5 L51 15 L62 9 L76 9 L99 9"></path></svg>
+            </div>
           </div>
           <div class="speed-edit">
             <label class="field-label" for="microSelectedSpeedCap">Set requested travel speed</label>
@@ -107,15 +203,15 @@
         </div>
       </details>
       <div class="micro-controls">
-        <button class="primary-button" id="microPlay" type="button"><span id="microPlayIcon" aria-hidden="true">▶</span><span id="microPlayText">Play</span></button>
+        <button class="primary-button" id="microPlay" type="button"><span id="microPlayIcon" aria-hidden="true">&gt;</span><span id="microPlayText">Play</span></button>
         <button class="quiet-button" id="microReset" type="button">Reset run</button>
         <label class="speed-control">Playback
           <select id="microSpeed" aria-label="Playback speed">
-            <option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
+            <option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option>
           </select>
         </label>
-        <button class="download-button" id="microCsv" type="button">↓ <span>Download CSV</span></button>
-        <button class="download-button" id="microJson" type="button">↓ <span>Download JSON</span></button>
+        <button class="download-button" id="microCsv" type="button"><span>Download CSV</span></button>
+        <button class="download-button" id="microJson" type="button"><span>Download JSON</span></button>
       </div>
     </section>
 
@@ -154,7 +250,7 @@
         <option value="36">36 vehicles / minute</option>
       </select>
 
-      <label class="field-label variability-label" for="microVariation">Arrival variation <span id="microVariationValue">±25%</span></label>
+      <label class="field-label variability-label" for="microVariation">Arrival variation <span id="microVariationValue">+/-25%</span></label>
       <input class="variability-slider" id="microVariation" type="range" min="0" max="50" step="5" value="25" aria-label="Arrival variation">
       <div class="field-hint">Changes the time between new vehicles.</div>
 
@@ -184,7 +280,17 @@
       </details>
     </aside>
 
-    <footer class="footnote"><span><i class="foot-dot"></i> Runs locally in your browser.</span><span>Vehicle counts and speeds are illustrative, not calibrated.</span></footer>
+    <footer class="footnote">
+      <span><i class="foot-dot"></i> Runs locally in your browser.</span>
+      <span>Educational use only. Uncalibrated. Not for engineering decisions.</span>
+      <span class="app-version">Flowline v0.1.0</span>
+      <nav aria-label="Legal information">
+        <a href="../DISCLAIMER.md">Disclaimer</a>
+        <a href="../PRIVACY.md">Privacy</a>
+        <a href="../TERMS.md">Terms</a>
+        <a href="../THIRD_PARTY_NOTICES.md">Third-party notices</a>
+      </nav>
+    </footer>
   </main>
 </body>
 </html>

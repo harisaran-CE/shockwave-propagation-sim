@@ -37,4 +37,31 @@ lower. The available choices follow each vehicle's normal desired speed with a
 small soft-limit allowance rather than an unrestricted high-speed target; the
 available choices extend to 120 km/h.
 Playback runs at 0.5x while a speed edit is being adjusted. The browser
-edition works with mouse, touch, laptop, and mobile layouts.
+edition works with mouse, touch, laptop, and mobile layouts. Use the 2D/3D
+control above the road to switch presentation modes. The 3D view is a
+measured visual layer over the same recorded vehicle frames; it does not add
+a second physics model. If WebGL is unavailable, continue in 2D.
+
+## Browser release
+
+The browser release runs offline by opening `browser_app/index.html`. No
+account, server, Python installation, or network connection is required.
+
+### Reproduce a run
+
+Use the same app version, seed, road situation, lane selection, barrier
+distance, arrival rate, arrival variation, speed limit, and duration. Results
+may differ if the simulation code changes between versions.
+
+### Browser export columns
+
+CSV exports include `app_version`, scenario settings, sample time, barrier
+position, vehicle counts by type, mean speed, density, queue count, exits,
+overtakes, lane changes, prevented contacts, and selection context.
+
+JSON exports include the app version, model, settings, summary, selected
+vehicle telemetry, sample rows, crash observations when present, and
+limitations. Crash report JSON contains report-only collision observations.
+
+Flowline is educational and exploratory. Its driving rules are simplified and
+uncalibrated. Do not use results for engineering or safety decisions.

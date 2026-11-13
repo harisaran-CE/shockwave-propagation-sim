@@ -575,7 +575,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .physics-details[open] summary::after {
-  content: "−";
+  content: "-";
 }
 
 .physics-details p {
