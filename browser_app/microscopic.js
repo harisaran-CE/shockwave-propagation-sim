@@ -1080,11 +1080,18 @@
     const half = vehicle.length / 2;
     const meters = (point.x - metrics.left) / scale;
     const position = Math.min(ROAD_LENGTH - half - 1, Math.max(half + 1, meters));
+    // Free placement: the exact height of the pointer sets the side-to-side position,
+    // kept inside the lane's edges so the vehicle never sticks out of the road.
     const laneFraction = (point.y - metrics.laneY[0]) / (metrics.laneY[1] - metrics.laneY[0]);
-    const lane = laneFraction < 0.5 ? 0 : 1;
+    const rawLateral = laneFraction * LANE_WIDTH_M;
+    const lane = rawLateral < LANE_WIDTH_M / 2 ? 0 : 1;
     const bounds = S.lateralBounds(vehicle, lane);
-    const lateralPositionM = Math.min(bounds.max, Math.max(bounds.min, lane * LANE_WIDTH_M));
-    return { position: Math.round(position * 10) / 10, lane, lateralPositionM };
+    const lateralPositionM = Math.min(bounds.max, Math.max(bounds.min, rawLateral));
+    return {
+      position: Math.round(position * 10) / 10,
+      lane,
+      lateralPositionM: Math.round(lateralPositionM * 100) / 100
+    };
   }
 
   function placementProblem(vehicle, spot) {
