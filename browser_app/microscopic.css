@@ -330,6 +330,13 @@
   margin-left: auto;
 }
 
+.risk-explanation {
+  margin: 6px 0 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .micro-controls .force-crash-button {
   border-color: var(--color-alert);
   color: var(--color-alert);

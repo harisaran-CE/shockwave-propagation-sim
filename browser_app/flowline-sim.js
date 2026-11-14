@@ -511,18 +511,81 @@
     state.nextArrival = state.time + Math.max(0.5, interval);
   }
 
+  // Time to collision at or below TTC_CRITICAL_S scores full risk; at or above
+  // TTC_SAFE_S scores none; linear in between.
+  const TTC_CRITICAL_S = 1.5;
+  const TTC_SAFE_S = 6;
+
   function riskIndex(risk, snapshot, crashCount) {
     const speedComponent = Math.min(1, Math.max(0, snapshot.meanSpeedKmh / 100));
     const densityComponent = Math.min(1, Math.max(0, snapshot.densityVehiclesPerKmPerLane / 45));
-    const conflictComponent = Math.min(1, snapshot.contactsPrevented / 12);
+    const ttc = snapshot.minTimeToCollisionS ?? null;
+    const ttcComponent = ttc === null ? 0
+      : Math.min(1, Math.max(0, (TTC_SAFE_S - ttc) / (TTC_SAFE_S - TTC_CRITICAL_S)));
+    const contactComponent = Math.min(1, snapshot.contactsPrevented / 12);
+    const conflictComponent = Math.max(contactComponent, ttcComponent);
     const crashComponent = Math.min(1, crashCount / 3);
-    const score = (speedComponent * risk.speed + densityComponent * risk.density
-      + conflictComponent * risk.conflict + crashComponent * risk.crash) * 100;
+    const contributions = {
+      speed: speedComponent * risk.speed,
+      density: densityComponent * risk.density,
+      conflict: conflictComponent * risk.conflict,
+      crash: crashComponent * risk.crash
+    };
+    const score = (contributions.speed + contributions.density
+      + contributions.conflict + contributions.crash) * 100;
+    const top = Object.keys(contributions).reduce((a, b) => (contributions[b] > contributions[a] ? b : a));
+    const explanations = {
+      speed: `high average speed (${snapshot.meanSpeedKmh.toFixed(0)} km/h)`,
+      density: `crowded road (${snapshot.densityVehiclesPerKmPerLane.toFixed(1)} vehicles/km/lane)`,
+      conflict: ttcComponent >= contactComponent && ttc !== null
+        ? `vehicles closing fast (shortest time to collision ${ttc.toFixed(1)} s)`
+        : `contacts prevented (${snapshot.contactsPrevented})`,
+      crash: `recorded collisions (${crashCount})`
+    };
+    const explanation = contributions[top] > 0
+      ? `Mainly driven by ${explanations[top]}.`
+      : 'No major risk factors right now.';
     return {
       score: Number(score.toFixed(2)),
       band: score >= 70 ? 'HIGH' : score >= 35 ? 'MODERATE' : 'LOW',
-      components: { speed: speedComponent, density: densityComponent, conflict: conflictComponent, crash: crashComponent }
+      explanation,
+      components: {
+        speed: speedComponent, density: densityComponent, conflict: conflictComponent,
+        crash: crashComponent, timeToCollision: ttcComponent
+      }
     };
+  }
+
+  // Shortest time, in seconds, until a following vehicle would reach the vehicle
+  // ahead (or the barrier) if both kept their current speeds. Null if nothing is closing.
+  function minimumTimeToCollision(world, state) {
+    let best = null;
+    const consider = (gap, closing) => {
+      if (closing <= 0 || gap < 0) return;
+      const ttc = gap / closing;
+      if (best === null || ttc < best) best = ttc;
+    };
+    const lanes = new Set(state.vehicles.map((vehicle) => vehicle.lane));
+    for (const lane of lanes) {
+      const ordered = state.vehicles
+        .filter((vehicle) => vehicle.lane === lane)
+        .sort((a, b) => b.position - a.position);
+      for (let index = 0; index + 1 < ordered.length; index += 1) {
+        const leader = ordered[index];
+        const follower = ordered[index + 1];
+        consider(
+          leader.position - leader.length / 2 - (follower.position + follower.length / 2),
+          follower.speed - leader.speed
+        );
+      }
+      if (barrierBlocksLane(world, lane)) {
+        const nearest = ordered.find((vehicle) => vehicle.position < world.barrierPositionM);
+        if (nearest) {
+          consider(world.barrierPositionM - nearest.position - nearest.length / 2, nearest.speed);
+        }
+      }
+    }
+    return best === null ? null : Number(best.toFixed(3));
   }
 
   // Demonstration only: moves a follower into the car ahead of it so the
@@ -829,6 +892,7 @@
     }
     return {
       timeSeconds: state.time,
+      minTimeToCollisionS: minimumTimeToCollision(world, state),
       barrierPositionM: world.scenario === 'busy' ? null : world.barrierPositionM,
       vehiclesOnRoad: state.vehicles.length,
       vehicleCounts: counts,
