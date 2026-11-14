@@ -92,6 +92,7 @@
       </div>
 
       <div class="micro-event" id="microEvent" aria-live="polite">Vehicles are ready. Press Play to watch them move and pass.</div>
+      <p class="field-hint" id="microPlacementHint">Before you press Play, drag any vehicle to a new spot on the road. Spots that would overlap another vehicle are refused.</p>
       <div class="risk-readout risk-readout-main">Risk index <strong id="microRiskIndex">0.0</strong><span id="microRiskBand">LOW</span></div>
       <p class="risk-explanation" id="microRiskExplanation" aria-live="polite"></p>
       <section class="flowline-editor" id="flowlineEditor" aria-label="Scenario editor">
@@ -207,6 +208,7 @@
       <div class="micro-controls">
         <button class="primary-button" id="microPlay" type="button"><span id="microPlayIcon" aria-hidden="true">&gt;</span><span id="microPlayText">Play</span></button>
         <button class="quiet-button" id="microReset" type="button">Reset run</button>
+        <button class="quiet-button" id="microUndoPlacement" type="button" disabled title="Take back your last vehicle move (available before Play)">Undo move</button>
         <button class="quiet-button force-crash-button" id="microForceCrash" type="button" title="Demonstration only: moves two cars into each other so the collision record appears">Force a collision (demo)</button>
         <label class="speed-control">Playback
           <select id="microSpeed" aria-label="Playback speed">

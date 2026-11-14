@@ -337,6 +337,14 @@
   line-height: 1.4;
 }
 
+.micro-road-wrap.is-vehicle-draggable canvas {
+  cursor: grab;
+}
+
+.micro-road-wrap.is-vehicle-dragging canvas {
+  cursor: grabbing;
+}
+
 .micro-controls .force-crash-button {
   border-color: var(--color-alert);
   color: var(--color-alert);

@@ -71,6 +71,7 @@
     riskIndex: $('microRiskIndex'),
     riskBand: $('microRiskBand'),
     riskExplanation: $('microRiskExplanation'),
+    undoPlacement: $('microUndoPlacement'),
     csv: $('microCsv'),
     json: $('microJson')
   };
@@ -127,6 +128,8 @@
   const selectedVehicleIds = new Set();
   let speedEditActive = false;
   let selectionDrag = null;
+  let placement = null;
+  const placementHistory = [];
   let droppedTimeSeconds = 0;
   let runningSlow = false;
 
@@ -361,6 +364,7 @@
   }
 
   function draw() {
+    updateUndoButton();
     const frame = viewFrameIndex === null ? null : state.frames[viewFrameIndex];
     const displayState = frame || state;
     const displaySettings = frame ? frame.settings : getSettings();
@@ -563,7 +567,7 @@
     });
     ui.time.textContent = formatTime(displayState.time);
     ui.event.textContent = displayState.eventText;
-    ui.event.classList.toggle('is-alert', /stopped|contact|crash|conflict/i.test(displayState.eventText));
+    ui.event.classList.toggle('is-alert', /stopped|contact|crash|conflict|overlap|closed/i.test(displayState.eventText));
     updateTimelineReadout();
     renderCrashReport(displayState.crashes && displayState.crashes[displayState.crashes.length - 1]);
   }
@@ -905,7 +909,9 @@
     selectedVehicleIds.clear();
     speedEditActive = false;
     selectionDrag = null;
-    canvas.closest('.micro-road-wrap').classList.remove('has-selection', 'is-selecting');
+    placement = null;
+    placementHistory.length = 0;
+    canvas.closest('.micro-road-wrap').classList.remove('has-selection', 'is-selecting', 'is-vehicle-dragging');
     recordFrame(true);
     setRunning(false);
     draw();
@@ -986,6 +992,12 @@
     }
     if (viewFrameIndex !== null || !point.withinRoad) return;
     const hit = hitVehicle(point);
+    if (hit && canPlaceVehicles() && !event.shiftKey) {
+      applySelection([hit.id]);
+      startPlacement(hit, event);
+      event.preventDefault();
+      return;
+    }
     if (hit && !event.shiftKey) {
       applySelection([hit.id]);
       event.preventDefault();
@@ -1005,6 +1017,14 @@
       updateBarrierFromPointer(event);
       return;
     }
+    if (placement) {
+      movePlacement(point);
+      return;
+    }
+    canvas.closest('.micro-road-wrap').classList.toggle(
+      'is-vehicle-draggable',
+      canPlaceVehicles() && !!hitVehicle(point)
+    );
     if (selectionDrag) {
       selectionDrag.currentX = point.x;
       selectionDrag.currentY = point.y;
@@ -1017,6 +1037,10 @@
     );
   });
   function stopBarrierDrag(event) {
+    if (placement) {
+      finishPlacement(event);
+      return;
+    }
     if (draggingBarrier) {
       draggingBarrier = false;
       canvas.closest('.micro-road-wrap').classList.remove('is-barrier-dragging');
@@ -1042,6 +1066,108 @@
   }
   canvas.addEventListener('pointerup', stopBarrierDrag);
   canvas.addEventListener('pointercancel', stopBarrierDrag);
+
+  // Vehicle placement: before Play, a vehicle can be dragged to a new spot.
+  // Spots that overlap another vehicle, or sit in a closed lane past the barrier,
+  // are refused and the vehicle stays where it was.
+  function canPlaceVehicles() {
+    return state.time === 0 && viewFrameIndex === null && !running;
+  }
+
+  function placementSpot(vehicle, point) {
+    const metrics = roadMetrics();
+    const scale = (metrics.right - metrics.left) / ROAD_LENGTH;
+    const half = vehicle.length / 2;
+    const meters = (point.x - metrics.left) / scale;
+    const position = Math.min(ROAD_LENGTH - half - 1, Math.max(half + 1, meters));
+    const laneFraction = (point.y - metrics.laneY[0]) / (metrics.laneY[1] - metrics.laneY[0]);
+    const lane = laneFraction < 0.5 ? 0 : 1;
+    const bounds = S.lateralBounds(vehicle, lane);
+    const lateralPositionM = Math.min(bounds.max, Math.max(bounds.min, lane * LANE_WIDTH_M));
+    return { position: Math.round(position * 10) / 10, lane, lateralPositionM };
+  }
+
+  function placementProblem(vehicle, spot) {
+    if (barrierBlocksLane(spot.lane) && spot.position + vehicle.length / 2 > barrierPositionM) {
+      return 'That lane is closed beyond the barrier.';
+    }
+    const clash = state.vehicles.find((other) => other.id !== vehicle.id
+      && Math.abs(other.lateralPositionM - spot.lateralPositionM) < (vehicle.width + other.width) / 2
+      && Math.abs(other.position - spot.position) < (vehicle.length + other.length) / 2 + 1);
+    return clash ? `That spot would overlap vehicle ${clash.id + 1}. Try another spot.` : null;
+  }
+
+  function applySpot(vehicle, spot) {
+    vehicle.position = spot.position;
+    vehicle.previousPosition = spot.position;
+    vehicle.lane = spot.lane;
+    vehicle.lateralPositionM = spot.lateralPositionM;
+    vehicle.previousLateralPositionM = spot.lateralPositionM;
+  }
+
+  // Replaces the saved start-of-run frame so history and replay show the edited positions.
+  function refreshStartFrame() {
+    state.frames = [];
+    state.events = [];
+    recordFrame(true);
+  }
+
+  function startPlacement(vehicle, event) {
+    placement = {
+      vehicle,
+      origin: { position: vehicle.position, lane: vehicle.lane, lateralPositionM: vehicle.lateralPositionM },
+      lastSpot: { position: vehicle.position, lane: vehicle.lane, lateralPositionM: vehicle.lateralPositionM }
+    };
+    canvas.setPointerCapture(event.pointerId);
+    canvas.closest('.micro-road-wrap').classList.add('is-vehicle-dragging');
+  }
+
+  function movePlacement(point) {
+    const { vehicle } = placement;
+    const spot = placementSpot(vehicle, point);
+    const problem = placementProblem(vehicle, spot);
+    placement.lastProblem = problem;
+    if (!problem) {
+      applySpot(vehicle, spot);
+      placement.lastSpot = spot;
+      state.eventText = `Vehicle ${vehicle.id + 1} can go here. Let go to place it.`;
+    } else {
+      state.eventText = problem;
+    }
+    draw();
+  }
+
+  function finishPlacement(event) {
+    const { vehicle, origin, lastProblem } = placement;
+    placement = null;
+    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    canvas.closest('.micro-road-wrap').classList.remove('is-vehicle-dragging');
+    const moved = vehicle.position !== origin.position || vehicle.lane !== origin.lane
+      || vehicle.lateralPositionM !== origin.lateralPositionM;
+    if (moved) {
+      placementHistory.push({ id: vehicle.id, ...origin });
+      refreshStartFrame();
+      state.eventText = `Vehicle ${vehicle.id + 1} moved. Use Undo move to go back.`;
+    }
+    if (lastProblem) state.eventText = `${lastProblem} Vehicle ${vehicle.id + 1} stays at its last clear spot.`;
+    updateReadouts();
+    draw();
+  }
+
+  function updateUndoButton() {
+    ui.undoPlacement.disabled = !canPlaceVehicles() || placementHistory.length === 0;
+  }
+
+  ui.undoPlacement.addEventListener('click', () => {
+    const entry = placementHistory.pop();
+    if (!entry || !canPlaceVehicles()) return;
+    const vehicle = state.vehicles.find((item) => item.id === entry.id);
+    if (vehicle) applySpot(vehicle, entry);
+    refreshStartFrame();
+    state.eventText = 'Last move undone.';
+    updateReadouts();
+    draw();
+  });
 
   ui.play.addEventListener('click', start);
   document.addEventListener('keydown', (event) => {
