@@ -1085,8 +1085,10 @@
     const laneFraction = (point.y - metrics.laneY[0]) / (metrics.laneY[1] - metrics.laneY[0]);
     const rawLateral = laneFraction * LANE_WIDTH_M;
     const lane = rawLateral < LANE_WIDTH_M / 2 ? 0 : 1;
-    const bounds = S.lateralBounds(vehicle, lane);
-    const lateralPositionM = Math.min(bounds.max, Math.max(bounds.min, rawLateral));
+    // The whole road is open, including the space between the two lane centres.
+    // The car belongs to the lane it is nearest to.
+    const roadEdges = { min: S.lateralBounds(vehicle, 0).min, max: S.lateralBounds(vehicle, 1).max };
+    const lateralPositionM = Math.min(roadEdges.max, Math.max(roadEdges.min, rawLateral));
     return {
       position: Math.round(position * 10) / 10,
       lane,
