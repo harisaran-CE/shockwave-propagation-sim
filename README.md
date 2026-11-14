@@ -96,10 +96,21 @@ fundamental diagram; speed is not an independent conserved state.
 
 ```text
 shockwave-propagation-sim/
-├── .gitignore
-├── LICENSE
+├── traffic_sim.py            # desktop LWR macroscopic engine
+├── traffic_micro.py          # microscopic (vehicle-level) Python prototype
+├── traffic_micro_app.pyw     # Python visual preview for the microscopic model
+├── traffic_app.pyw           # Flowline Traffic Studio desktop app
+├── test_traffic_micro.py     # unit tests for traffic_micro
+├── build_windows.ps1         # Windows release build
+├── browser_app/              # offline browser simulation (index.html)
+│   ├── microscopic.js        # vehicle simulation state and rules
+│   ├── flowline-sim.js       # simulation support module
+│   ├── flowline-3d.js        # Three.js presentation layer (render-only)
+│   └── vendor/               # bundled Three.js
+├── golden_hashes.json        # reference hashes for reproducibility checks
 ├── README.md
-└── traffic_sim.py
+├── USER_GUIDE.md
+└── DEVELOPER_NOTES.md
 ```
 
 ## Setup in VS Code
@@ -164,8 +175,8 @@ arrivals, several vehicle types, gap-checked lane changes, overtaking, one-lane
 restrictions, and full road closures. Its driving rules are illustrative, not
 calibrated. Intersections and signals are not modeled.
 Drag-select vehicles in the road view to inspect their type, speed, lane, and
-forward congestion. Selected vehicles can receive a requested travel speed,
-with requested travel speeds. The vehicle tries to travel at that speed,
+forward congestion. Selected vehicles can receive a requested travel speed.
+The vehicle tries to travel at that speed,
 but safe following distance, barriers, and lane rules always take priority.
 Choices are based on the vehicle's normal desired speed with a small soft-limit
 allowance, not an unrestricted high-speed target; choices currently extend to
