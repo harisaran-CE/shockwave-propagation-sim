@@ -840,7 +840,9 @@ body {
 .micro-workspace > .micro-legend,
 .micro-workspace > .micro-readouts,
 .micro-workspace > .micro-event,
-.micro-workspace > .micro-controls {
+.micro-workspace > .micro-controls,
+.micro-workspace > .risk-readout-main,
+.micro-workspace > .risk-explanation {
   grid-column: 1;
 }
 

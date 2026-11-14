@@ -92,6 +92,8 @@
       </div>
 
       <div class="micro-event" id="microEvent" aria-live="polite">Vehicles are ready. Press Play to watch them move and pass.</div>
+      <div class="risk-readout risk-readout-main">Risk index <strong id="microRiskIndex">0.0</strong><span id="microRiskBand">LOW</span></div>
+      <p class="risk-explanation" id="microRiskExplanation" aria-live="polite"></p>
       <section class="flowline-editor" id="flowlineEditor" aria-label="Scenario editor">
         <div class="editor-head">
           <div>
@@ -115,8 +117,6 @@
               <label class="field-label" for="microRiskConflictWeight">Conflict weight <input class="field-select" id="microRiskConflictWeight" type="number" min="0" max="1" step="0.05" value="0.25"></label>
               <label class="field-label" for="microRiskCrashWeight">Crash weight <input class="field-select" id="microRiskCrashWeight" type="number" min="0" max="1" step="0.05" value="0.15"></label>
             </div>
-            <div class="risk-readout">Risk index <strong id="microRiskIndex">0.0</strong><span id="microRiskBand">LOW</span></div>
-            <p class="risk-explanation" id="microRiskExplanation" aria-live="polite"></p>
           </div>
         </div>
       </section>
