@@ -525,6 +525,36 @@
     };
   }
 
+  // Demonstration only: moves a follower into the car ahead of it so the
+  // collision record can be shown. Changes the traffic state, so the page must
+  // label it as a demonstration. Returns the record, or null if no pair exists.
+  function forceDemonstrationCollision(world, state) {
+    const lanes = [...new Set(state.vehicles.filter((v) => v.id >= 0).map((v) => v.lane))];
+    for (const lane of lanes) {
+      const ordered = state.vehicles
+        .filter((v) => v.id >= 0 && v.lane === lane)
+        .sort((a, b) => b.position - a.position);
+      for (let index = 0; index + 1 < ordered.length; index += 1) {
+        const leader = ordered[index];
+        const follower = ordered[index + 1];
+        follower.position = leader.position - 1;
+        follower.previousPosition = follower.position;
+        follower.lateralPositionM = leader.lateralPositionM;
+        follower.previousLateralPositionM = leader.lateralPositionM;
+        const record = observePotentialCollision(
+          world, state, follower, leader, follower.position, leader.position
+        );
+        if (record) {
+          record.demonstration = true;
+          record.severity = 'demonstration';
+          state.eventText = `Demonstration collision: vehicles ${leader.id + 1} and ${follower.id + 1} were placed into overlap.`;
+          return record;
+        }
+      }
+    }
+    return null;
+  }
+
   // Returns the new collision record, or null. The caller decides how to show it.
   function observePotentialCollision(world, state, vehicle, leader, position, leaderPosition) {
     if (!leader || leader.id < 0) return null;
@@ -824,6 +854,6 @@
     barrierBlocksLane, barrierLeader, laneOpenFor, occupiedLanes, laneNeighbors,
     lateralBounds, lateralTrackPositions, lateralPathIsClear, idm, safeGaps,
     registerEvent, proposalFor, chooseArrivalKind, addArrival, scheduleArrival,
-    riskIndex, observePotentialCollision, step, createState, metricsSnapshot
+    riskIndex, observePotentialCollision, forceDemonstrationCollision, step, createState, metricsSnapshot
   });
 })();
