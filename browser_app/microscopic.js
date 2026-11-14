@@ -38,6 +38,7 @@
     playIcon: $('microPlayIcon'),
     playText: $('microPlayText'),
     reset: $('microReset'),
+    forceCrash: $('microForceCrash'),
     speed: $('microSpeed'),
     scenario: $('microScenario'),
     scenarioHint: $('microScenarioHint'),
@@ -1049,6 +1050,17 @@
     }
   });
   ui.reset.addEventListener('click', reset);
+  ui.forceCrash.addEventListener('click', () => {
+    const record = S.forceDemonstrationCollision(currentWorld(), state);
+    if (!record) {
+      ui.event.textContent = 'No two cars are in the same lane yet. Press Play first, then try again.';
+      return;
+    }
+    viewFrameIndex = null;
+    renderCrashReport(record);
+    updateReadouts();
+    draw();
+  });
   ui.clearSelection.addEventListener('click', (event) => {
     event.stopPropagation();
     applySelection([]);
