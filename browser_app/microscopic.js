@@ -70,6 +70,7 @@
     riskCrashWeight: $('microRiskCrashWeight'),
     riskIndex: $('microRiskIndex'),
     riskBand: $('microRiskBand'),
+    riskExplanation: $('microRiskExplanation'),
     csv: $('microCsv'),
     json: $('microJson')
   };
@@ -659,6 +660,7 @@
     ui.riskIndex.textContent = result.score.toFixed(1);
     ui.riskBand.textContent = result.band;
     ui.riskBand.dataset.risk = result.band.toLowerCase();
+    ui.riskExplanation.textContent = result.explanation;
     return result;
   }
 
