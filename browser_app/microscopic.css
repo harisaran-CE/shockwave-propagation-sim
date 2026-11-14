@@ -330,6 +330,12 @@
   margin-left: auto;
 }
 
+.micro-controls .force-crash-button {
+  border-color: var(--color-alert);
+  color: var(--color-alert);
+  font-weight: 700;
+}
+
 .micro-notes {
   grid-column: 2;
   grid-row: 2;
