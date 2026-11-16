@@ -28,6 +28,14 @@ accelerate normally when a moved barrier is far enough ahead, and brake only
 when it is within a safe stopping distance. Vehicles have larger, clearer
 shapes, and their apparent lengths do not shrink when traffic gets close. Use
 Play, Pause, or Reset, and download run samples as CSV or JSON.
+Before you press Play, Simulation settings can add vehicles from a JSON file
+("Add vehicles from JSON"). The file needs "format": "flowline-vehicles" and a
+"vehicles" list. Each vehicle gives "kind" (car, motorcycle, rickshaw, bus, or
+truck), "lane" (1 or 2), "positionM" (the centre, in metres from the 0 m end),
+and optionally "speedKmh" (0 to 150). Each vehicle is checked for fitting on the
+road, the closed-lane barrier, and overlap with vehicles already present. An
+invalid vehicle is skipped with the reason, and the rest of the file still adds.
+Reset or a setting change clears added vehicles.
 Editor mode exposes a single scenario state for editing, JSON save/load, and a
 configurable 0-100 risk index based on speed, density, prevented contacts, and
 simulated crash observations. Crash records include timing, geometry, relative
