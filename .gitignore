@@ -32,3 +32,9 @@ Thumbs.db
 # Local simulator outputs
 outputs/
 *.log
+
+# Local tool state
+.claude/
+
+# Generated test screenshots
+tests/legacy/*.png
