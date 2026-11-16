@@ -515,6 +515,12 @@
   // TTC_SAFE_S scores none; linear in between.
   const TTC_CRITICAL_S = 1.5;
   const TTC_SAFE_S = 6;
+  // Required deceleration (m/s^2) at or below DECEL_COMFORT_MPS2 scores no risk; at or
+  // above DECEL_CRITICAL_MPS2 it scores full risk; linear in between.
+  const DECEL_COMFORT_MPS2 = 2;
+  const DECEL_CRITICAL_MPS2 = 6;
+  // Length of the rolling buffer of vehicle states kept before each collision record.
+  const PRE_IMPACT_WINDOW_S = 3;
 
   function riskIndex(risk, snapshot, crashCount) {
     const speedComponent = Math.min(1, Math.max(0, snapshot.meanSpeedKmh / 100));
@@ -522,8 +528,11 @@
     const ttc = snapshot.minTimeToCollisionS ?? null;
     const ttcComponent = ttc === null ? 0
       : Math.min(1, Math.max(0, (TTC_SAFE_S - ttc) / (TTC_SAFE_S - TTC_CRITICAL_S)));
+    const requiredDecel = snapshot.maxRequiredDecelerationMps2 ?? 0;
+    const decelComponent = requiredDecel <= DECEL_COMFORT_MPS2 ? 0
+      : Math.min(1, (requiredDecel - DECEL_COMFORT_MPS2) / (DECEL_CRITICAL_MPS2 - DECEL_COMFORT_MPS2));
     const contactComponent = Math.min(1, snapshot.contactsPrevented / 12);
-    const conflictComponent = Math.max(contactComponent, ttcComponent);
+    const conflictComponent = Math.max(contactComponent, ttcComponent, decelComponent);
     const crashComponent = Math.min(1, crashCount / 3);
     const contributions = {
       speed: speedComponent * risk.speed,
@@ -537,9 +546,13 @@
     const explanations = {
       speed: `high average speed (${snapshot.meanSpeedKmh.toFixed(0)} km/h)`,
       density: `crowded road (${snapshot.densityVehiclesPerKmPerLane.toFixed(1)} vehicles/km/lane)`,
-      conflict: ttcComponent >= contactComponent && ttc !== null
-        ? `vehicles closing fast (shortest time to collision ${ttc.toFixed(1)} s)`
-        : `contacts prevented (${snapshot.contactsPrevented})`,
+      conflict: decelComponent > Math.max(contactComponent, ttcComponent)
+        ? (requiredDecel === Infinity
+          ? 'a rear-end conflict with no room left to stop'
+          : `hard braking to avoid a rear-end (${requiredDecel.toFixed(1)} m/s² needed)`)
+        : ttcComponent >= contactComponent && ttc !== null
+          ? `vehicles closing fast (shortest time to collision ${ttc.toFixed(1)} s)`
+          : `contacts prevented (${snapshot.contactsPrevented})`,
       crash: `recorded collisions (${crashCount})`
     };
     const explanation = contributions[top] > 0
@@ -551,19 +564,37 @@
       explanation,
       components: {
         speed: speedComponent, density: densityComponent, conflict: conflictComponent,
-        crash: crashComponent, timeToCollision: ttcComponent
+        crash: crashComponent, timeToCollision: ttcComponent, deceleration: decelComponent
       }
     };
   }
 
-  // Shortest time, in seconds, until a following vehicle would reach the vehicle
-  // ahead (or the barrier) if both kept their current speeds. Null if nothing is closing.
-  function minimumTimeToCollision(world, state) {
-    let best = null;
-    const consider = (gap, closing) => {
-      if (closing <= 0 || gap < 0) return;
-      const ttc = gap / closing;
-      if (best === null || ttc < best) best = ttc;
+  // Each following pair in a lane, measured bumper to bumper. A closed barrier counts as
+  // a stopped leader for the nearest vehicle upstream of it. For each pair:
+  //  - timeToCollisionS: gap / closing speed, when the follower is closing on the leader;
+  //  - requiredDecelerationMps2: the constant braking the follower needs to stop exactly
+  //    at the gap if the leader keeps its speed (closing^2 / (2 gap)); Infinity when the
+  //    gap is already gone;
+  //  - stoppingMarginM: gap left after the follower's reaction distance and its braking
+  //    distance at its own comfortable deceleration. Negative means it cannot stop in time.
+  // Pairs where nothing is closing have a null time and required deceleration.
+  function followingPairs(world, state) {
+    const pairs = [];
+    const pairMetrics = (follower, gapM, closingMps, leaderId) => {
+      const closing = closingMps > 0;
+      const requiredDecel = !closing ? null
+        : gapM > 0 ? (closingMps * closingMps) / (2 * gapM) : Infinity;
+      const stoppingDistance = follower.speed * follower.reaction
+        + (follower.speed * follower.speed) / (2 * follower.deceleration);
+      return {
+        followerId: follower.id,
+        leaderId,
+        gapM,
+        closingSpeedMps: closingMps,
+        timeToCollisionS: closing && gapM >= 0 ? gapM / closingMps : null,
+        requiredDecelerationMps2: requiredDecel,
+        stoppingMarginM: gapM - stoppingDistance
+      };
     };
     const lanes = new Set(state.vehicles.map((vehicle) => vehicle.lane));
     for (const lane of lanes) {
@@ -573,19 +604,99 @@
       for (let index = 0; index + 1 < ordered.length; index += 1) {
         const leader = ordered[index];
         const follower = ordered[index + 1];
-        consider(
+        pairs.push(pairMetrics(
+          follower,
           leader.position - leader.length / 2 - (follower.position + follower.length / 2),
-          follower.speed - leader.speed
-        );
+          follower.speed - leader.speed,
+          leader.id
+        ));
       }
       if (barrierBlocksLane(world, lane)) {
         const nearest = ordered.find((vehicle) => vehicle.position < world.barrierPositionM);
         if (nearest) {
-          consider(world.barrierPositionM - nearest.position - nearest.length / 2, nearest.speed);
+          pairs.push(pairMetrics(
+            nearest,
+            world.barrierPositionM - nearest.position - nearest.length / 2,
+            nearest.speed,
+            'barrier'
+          ));
         }
       }
     }
-    return best === null ? null : Number(best.toFixed(3));
+    return pairs;
+  }
+
+  // Summary values used by the metrics snapshot and the risk index.
+  function summarizePairs(pairs) {
+    let minTime = null;
+    let maxRequired = null;
+    let shortfalls = 0;
+    for (const pair of pairs) {
+      if (pair.timeToCollisionS !== null && (minTime === null || pair.timeToCollisionS < minTime)) {
+        minTime = pair.timeToCollisionS;
+      }
+      if (pair.requiredDecelerationMps2 !== null) {
+        if (maxRequired === null || pair.requiredDecelerationMps2 > maxRequired) {
+          maxRequired = pair.requiredDecelerationMps2;
+        }
+        if (pair.stoppingMarginM < 0) shortfalls += 1;
+      }
+    }
+    return {
+      minTimeToCollisionS: minTime === null ? null : Number(minTime.toFixed(3)),
+      maxRequiredDecelerationMps2: maxRequired === null ? null : Number(maxRequired.toFixed(3)),
+      stoppingShortfallPairs: shortfalls
+    };
+  }
+
+  // Rolling buffer of vehicle states at the start of each fixed step, kept for the last
+  // PRE_IMPACT_WINDOW_S seconds. It only explains collision records and never feeds back
+  // into vehicle motion.
+  function recordPreImpactSample(state) {
+    state.preImpact.push({
+      timeSeconds: state.time,
+      vehicles: state.vehicles.map((vehicle) => ({
+        vehicleId: vehicle.id,
+        lane: vehicle.lane + 1,
+        positionM: vehicle.position,
+        lengthM: vehicle.length,
+        widthM: vehicle.width,
+        lateralPositionM: vehicle.lateralPositionM,
+        speedMps: vehicle.speed,
+        accelerationMps2: vehicle.acceleration
+      }))
+    });
+    // Keeps samples from PRE_IMPACT_WINDOW_S before the latest one, inclusive.
+    const cutoff = state.time - PRE_IMPACT_WINDOW_S - 1e-6;
+    while (state.preImpact.length && state.preImpact[0].timeSeconds < cutoff) state.preImpact.shift();
+  }
+
+  // The buffered states of the two vehicles in a collision, with the bumper-to-bumper gap
+  // and closing speed between them at each sample.
+  function preImpactWindow(world, state, vehicle, leader) {
+    const barrier = leader.id < 0;
+    const samples = state.preImpact.map((sample) => {
+      const follower = sample.vehicles.find((item) => item.vehicleId === vehicle.id);
+      const lead = barrier ? { positionM: world.barrierPositionM, lengthM: 0, speedMps: 0 }
+        : sample.vehicles.find((item) => item.vehicleId === leader.id);
+      const involved = barrier ? [follower] : [follower, lead];
+      const gapM = follower && lead
+        ? lead.positionM - lead.lengthM / 2 - (follower.positionM + follower.lengthM / 2)
+        : null;
+      return {
+        timeSeconds: sample.timeSeconds,
+        gapM: gapM === null ? null : Number(gapM.toFixed(3)),
+        closingSpeedMps: follower && lead ? Number((follower.speedMps - lead.speedMps).toFixed(3)) : null,
+        vehicles: involved.filter(Boolean).map((item) => ({
+          ...item,
+          positionM: Number(item.positionM.toFixed(3)),
+          lateralPositionM: Number(item.lateralPositionM.toFixed(3)),
+          speedMps: Number(item.speedMps.toFixed(3)),
+          accelerationMps2: Number(item.accelerationMps2.toFixed(3))
+        }))
+      };
+    });
+    return { windowSeconds: PRE_IMPACT_WINDOW_S, sampleIntervalSeconds: STEP, samples };
   }
 
   // Demonstration only: moves a follower into the car ahead of it so the
@@ -639,6 +750,7 @@
       severity: 'simulated-observation',
       relativeSpeedKmh: Number((Math.abs(vehicle.speed - leader.speed) * 3.6).toFixed(3)),
       riskIndex: null,
+      preImpactWindow: preImpactWindow(world, state, vehicle, leader),
       recordedAtStep: state.stepCount,
       geometry: {
         roadLengthM: ROAD_LENGTH,
@@ -672,6 +784,7 @@
 
   // Advances the model by one fixed step. Does not sample frames or touch the DOM.
   function step(world, state) {
+    recordPreImpactSample(state);
     const proposals = state.vehicles.map((vehicle) => proposalFor(world, state, vehicle)).filter(Boolean);
     proposals.sort((a, b) => b.gain - a.gain || a.vehicle.id - b.vehicle.id);
     for (const proposal of proposals) {
@@ -871,6 +984,7 @@
       frames: [],
       eventLog: [],
       crashes: [],
+      preImpact: [],
       crashPairs: new Set(),
       nextCrashId: 1,
       settings: null,
@@ -892,7 +1006,7 @@
     }
     return {
       timeSeconds: state.time,
-      minTimeToCollisionS: minimumTimeToCollision(world, state),
+      ...summarizePairs(followingPairs(world, state)),
       barrierPositionM: world.scenario === 'busy' ? null : world.barrierPositionM,
       vehiclesOnRoad: state.vehicles.length,
       vehicleCounts: counts,
@@ -918,6 +1032,7 @@
     barrierBlocksLane, barrierLeader, laneOpenFor, occupiedLanes, laneNeighbors,
     lateralBounds, lateralTrackPositions, lateralPathIsClear, idm, safeGaps,
     registerEvent, proposalFor, chooseArrivalKind, addArrival, scheduleArrival,
-    riskIndex, observePotentialCollision, forceDemonstrationCollision, step, createState, metricsSnapshot
+    riskIndex, observePotentialCollision, forceDemonstrationCollision, step, createState, metricsSnapshot,
+    followingPairs, summarizePairs
   });
 })();
