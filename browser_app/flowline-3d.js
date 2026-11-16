@@ -37,6 +37,12 @@ import * as THREE from './vendor/three.module.min.js';
   let cameraPosition = new THREE.Vector3(195, 38, 42);
   let cameraDragging = false;
   let previousPointer = null;
+  // Vehicle id for each instance index in the body meshes, rebuilt every frame.
+  let instanceVehicleIds = {};
+  // Vehicle being dragged to a new spot (only when the simulation allows placement).
+  let placementDrag = null;
+  const raycaster = new THREE.Raycaster();
+  const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.72);
   let selectedOutline;
   let speedLabel;
   let eventLabel;
@@ -222,6 +228,7 @@ import * as THREE from './vendor/three.module.min.js';
 
   function updateVehicles() {
     for (const kind of Object.keys(vehicleLayers)) vehicleLayers[kind].count = 0;
+    instanceVehicleIds = { car: [], motorcycle: [], rickshaw: [], bus: [], truck: [] };
     contactShadows.count = 0;
     headlights.count = 0;
     taillights.count = 0;
@@ -232,6 +239,7 @@ import * as THREE from './vendor/three.module.min.js';
       const mesh = vehicleLayers[vehicle.kind];
       if (!mesh || indexes[vehicle.kind] >= mesh.count + 260) continue;
       const index = indexes[vehicle.kind]++;
+      instanceVehicleIds[vehicle.kind][index] = vehicle.id;
       const scale = vehicle.kind === 'bus' || vehicle.kind === 'truck' ? 1 : 1;
       dummy.position.set(vehicle.position, vehicle.kind === 'motorcycle' ? 0.65 : vehicle.kind === 'bus' ? 1.25 : 0.72, vehicle.lateralPositionM);
       dummy.scale.set(Math.max(0.6, vehicle.length / (vehicle.kind === 'bus' ? 10 : vehicle.kind === 'truck' ? 8 : vehicle.kind === 'motorcycle' ? 2 : 4)) * scale, 1, Math.max(0.6, vehicle.width / (vehicle.kind === 'motorcycle' ? 0.8 : 2)));
@@ -516,18 +524,84 @@ import * as THREE from './vendor/three.module.min.js';
     if (!initialized && !buildScene()) return;
     setActive(true);
   });
+  // Converts a pointer position to normalised device coordinates for the raycaster.
+  function pointerRay(event) {
+    const rect = canvas.getBoundingClientRect();
+    raycaster.setFromCamera(new THREE.Vector2(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1
+    ), camera);
+    return raycaster.ray;
+  }
+
+  // The id of the vehicle under the pointer, or null. Only while placement is allowed.
+  function vehicleUnderPointer(event) {
+    if (!camera || !frame || !frame.placementAllowed) return null;
+    pointerRay(event);
+    const hit = raycaster.intersectObjects(Object.values(vehicleLayers), false)
+      .find((item) => item.instanceId !== undefined);
+    if (!hit) return null;
+    const kind = Object.keys(vehicleLayers).find((name) => vehicleLayers[name] === hit.object);
+    const id = instanceVehicleIds[kind]?.[hit.instanceId];
+    return id === undefined ? null : id;
+  }
+
+  // The road point (metres along the road, metres across it) under the pointer, on the
+  // plane of the vehicle bodies. Null if the pointer does not hit that plane.
+  function roadPointUnderPointer(event) {
+    const point = new THREE.Vector3();
+    return pointerRay(event).intersectPlane(groundPlane, point) ? point : null;
+  }
+
+  // Reports a placement step to the simulation page, which decides whether it is clear.
+  function reportPlacement(detail) {
+    window.dispatchEvent(new CustomEvent('flowline3dplacement', { detail }));
+  }
+
   canvas.addEventListener('pointerdown', (event) => {
+    const vehicleId = vehicleUnderPointer(event);
+    if (vehicleId !== null) {
+      placementDrag = { vehicleId };
+      cameraDragging = false;
+      previousPointer = null;
+      canvas.setPointerCapture(event.pointerId);
+      reportPlacement({ phase: 'start', vehicleId });
+      return;
+    }
     cameraDragging = currentMode === 'orbit';
     previousPointer = { x: event.clientX, y: event.clientY };
     canvas.setPointerCapture(event.pointerId);
   });
   canvas.addEventListener('pointermove', (event) => {
-    if (!cameraDragging || !previousPointer) return;
+    if (placementDrag) {
+      const point = roadPointUnderPointer(event);
+      if (point) {
+        reportPlacement({
+          phase: 'move', vehicleId: placementDrag.vehicleId,
+          positionM: point.x, lateralPositionM: point.z
+        });
+      }
+      return;
+    }
+    if (!cameraDragging) {
+      canvas.style.cursor = vehicleUnderPointer(event) === null ? '' : 'grab';
+      return;
+    }
+    if (!previousPointer) return;
     orbitAngle -= (event.clientX - previousPointer.x) * 0.008;
     orbitPitch = Math.max(0.1, Math.min(1.25, orbitPitch + (event.clientY - previousPointer.y) * 0.006));
     previousPointer = { x: event.clientX, y: event.clientY };
   });
-  canvas.addEventListener('pointerup', () => { cameraDragging = false; previousPointer = null; });
+  const endDrag = () => {
+    if (placementDrag) {
+      placementDrag = null;
+      reportPlacement({ phase: 'end' });
+    }
+    cameraDragging = false;
+    previousPointer = null;
+  };
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
   canvas.addEventListener('wheel', (event) => {
     if (currentMode === 'orbit') {
       cameraDistance = Math.max(28, Math.min(180, cameraDistance + event.deltaY * 0.08));
@@ -536,7 +610,21 @@ import * as THREE from './vendor/three.module.min.js';
   }, { passive: false });
   window.addEventListener('resize', resize);
   if (buildScene()) {
-    window.flowline3d = { renderFrame, setActive };
+    // Client-pixel position of a road point in metres. Used by the browser tests to aim drags.
+    const screenPointFor = (positionM, lateralPositionM) => {
+      if (!camera) return null;
+      const projected = new THREE.Vector3(positionM, 0.72, lateralPositionM).project(camera);
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: rect.left + ((projected.x + 1) / 2) * rect.width,
+        y: rect.top + ((1 - projected.y) / 2) * rect.height
+      };
+    };
+    const vehicleScreenPoint = (vehicleId) => {
+      const vehicle = frame?.vehicles.find((item) => item.id === vehicleId);
+      return vehicle ? screenPointFor(vehicle.position, vehicle.lateralPositionM) : null;
+    };
+    window.flowline3d = { renderFrame, setActive, vehicleScreenPoint, screenPointFor };
     window.dispatchEvent(new Event('flowline3dready'));
   }
 })();

@@ -209,6 +209,7 @@
         <button class="primary-button" id="microPlay" type="button"><span id="microPlayIcon" aria-hidden="true">&gt;</span><span id="microPlayText">Play</span></button>
         <button class="quiet-button" id="microReset" type="button">Reset run</button>
         <button class="quiet-button" id="microUndoPlacement" type="button" disabled title="Take back your last vehicle move (available before Play)">Undo move</button>
+        <button class="quiet-button" id="microRedoPlacement" type="button" disabled title="Put back a vehicle move you undid (available before Play)">Redo move</button>
         <button class="quiet-button force-crash-button" id="microForceCrash" type="button" title="Demonstration only: moves two cars into each other so the collision record appears">Force a collision (demo)</button>
         <label class="speed-control">Playback
           <select id="microSpeed" aria-label="Playback speed">
@@ -273,6 +274,14 @@
         <option value="180" selected>3 minutes</option>
         <option value="300">5 minutes</option>
       </select>
+
+      <div class="vehicle-import">
+        <div class="field-label">Vehicles from file</div>
+        <label class="download-button" for="microVehicleImport">Add vehicles from JSON</label>
+        <input id="microVehicleImport" type="file" accept="application/json,.json" hidden>
+        <div class="field-hint">Before Play only. Each vehicle is checked; the rest of the file still loads. Reset or a setting change clears added vehicles.</div>
+        <div class="vehicle-import-report" id="microVehicleImportReport" role="status" hidden></div>
+      </div>
 
       <details class="physics-details">
         <summary>How this model works</summary>

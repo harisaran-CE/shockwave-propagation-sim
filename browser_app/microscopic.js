@@ -64,6 +64,8 @@
     editorBody: $('microEditorBody'),
     scenarioSave: $('microScenarioSave'),
     scenarioLoad: $('microScenarioLoad'),
+    vehicleImport: $('microVehicleImport'),
+    vehicleImportReport: $('microVehicleImportReport'),
     riskSpeedWeight: $('microRiskSpeedWeight'),
     riskDensityWeight: $('microRiskDensityWeight'),
     riskConflictWeight: $('microRiskConflictWeight'),
@@ -72,6 +74,7 @@
     riskBand: $('microRiskBand'),
     riskExplanation: $('microRiskExplanation'),
     undoPlacement: $('microUndoPlacement'),
+    redoPlacement: $('microRedoPlacement'),
     csv: $('microCsv'),
     json: $('microJson')
   };
@@ -130,6 +133,7 @@
   let selectionDrag = null;
   let placement = null;
   const placementHistory = [];
+  const redoHistory = [];
   let droppedTimeSeconds = 0;
   let runningSlow = false;
 
@@ -507,6 +511,7 @@
           ? null
           : (frame ? frame.barrierPositionM : barrierPositionM),
         selectedVehicleIds: Array.from(selectedVehicleIds),
+        placementAllowed: canPlaceVehicles(),
         crashes: displayState.crashes || [],
         timeSeconds: displayState.time,
         vehicles: renderVehicles.map(({ vehicle, position, lateralPositionM }) => ({
@@ -613,7 +618,7 @@
     }
     ui.crashReport.hidden = false;
     ui.crashCount.textContent = `${state.crashes.length} EVENT${state.crashes.length === 1 ? '' : 'S'}`;
-    ui.crashSummary.textContent = `Observed at ${formatTime(record.timeSeconds)} | position ${record.impactPositionM.toFixed(1)} m | overlap ${record.geometry.overlapLengthM.toFixed(2)} m | relative speed ${record.relativeSpeedKmh.toFixed(1)} km/h | ${record.cause}`;
+    ui.crashSummary.textContent = `Observed at ${formatTime(record.timeSeconds)} | position ${record.impactPositionM.toFixed(1)} m | overlap ${record.geometry.overlapLengthM.toFixed(2)} m | relative speed ${record.relativeSpeedKmh.toFixed(1)} km/h | ${record.cause} | ${record.preImpactWindow ? `pre-impact window: ${record.preImpactWindow.samples.length} states (up to ${record.preImpactWindow.windowSeconds} s)` : 'no pre-impact window'}`;
     ui.crashVehicles.innerHTML = record.vehicles.map((vehicle) => `
       <tr><td>Vehicle ${vehicle.vehicleId + 1}</td><td>${vehicle.type}</td><td>${vehicle.speedKmh.toFixed(1)} km/h</td><td>${vehicle.lane}</td><td>${vehicle.positionM.toFixed(1)} m</td></tr>
     `).join('');
@@ -777,6 +782,100 @@
     reset();
   }
 
+  // Vehicle import: before Play, a JSON file can add vehicles to the current run.
+  // Each entry is checked on its own. An entry that fails a check is skipped with
+  // its reason, and the rest of the file still loads. Added vehicles are cleared by
+  // Reset or any setting change, as with a scenario load.
+  const VEHICLE_IMPORT_FORMAT = 'flowline-vehicles';
+  const VEHICLE_IMPORT_MAX_ENTRIES = 200;
+  const VEHICLE_IMPORT_MAX_SPEED_KMH = 150;
+
+  // Builds the vehicle for one file entry, or returns the reason it is skipped.
+  function vehicleFromImport(entry) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return 'not a vehicle object.';
+    if (!Object.hasOwn(profiles, entry.kind)) {
+      return `unknown kind "${entry.kind}"; use car, motorcycle, rickshaw, bus or truck.`;
+    }
+    if (!Number.isInteger(entry.lane) || entry.lane < 1 || entry.lane > 2) return 'lane must be 1 or 2.';
+    if (typeof entry.positionM !== 'number' || !Number.isFinite(entry.positionM)) {
+      return 'positionM must be a number of metres from the upstream end.';
+    }
+    if (entry.speedKmh !== undefined && !(typeof entry.speedKmh === 'number'
+      && entry.speedKmh >= 0 && entry.speedKmh <= VEHICLE_IMPORT_MAX_SPEED_KMH)) {
+      return `speedKmh must be between 0 and ${VEHICLE_IMPORT_MAX_SPEED_KMH}.`;
+    }
+    const lane = entry.lane - 1;
+    const vehicle = S.createVehicle(state.nextId, entry.kind, lane, entry.positionM, state.random,
+      Number(ui.speedLimit.value));
+    const half = vehicle.length / 2;
+    if (entry.positionM - half < 0 || entry.positionM + half > ROAD_LENGTH) {
+      return `at ${entry.positionM} m it would stick out of the ${ROAD_LENGTH} m road.`;
+    }
+    if (barrierBlocksLane(lane) && entry.positionM + half > barrierPositionM) {
+      return `lane ${entry.lane} is closed beyond the barrier.`;
+    }
+    // Imported vehicles start at the centre of their lane, the same as an arrival.
+    const spot = { position: entry.positionM, lane, lateralPositionM: lane * LANE_WIDTH_M };
+    const clash = state.vehicles.find((other) =>
+      Math.abs(other.lateralPositionM - spot.lateralPositionM) < (vehicle.width + other.width) / 2
+      && Math.abs(other.position - spot.position) < (vehicle.length + other.length) / 2 + 1);
+    if (clash) return `it would overlap road vehicle ${clash.id + 1}.`;
+    applySpot(vehicle, spot);
+    if (entry.speedKmh !== undefined) vehicle.speed = entry.speedKmh / 3.6;
+    return vehicle;
+  }
+
+  // Adds the valid entries and returns the report: a summary line and the skipped entries.
+  function importVehicles(documentData) {
+    const refuse = (summary) => ({ summary: `Vehicles not added: ${summary}`, skipped: [], isAlert: true });
+    if (!documentData || documentData.format !== VEHICLE_IMPORT_FORMAT
+      || !Array.isArray(documentData.vehicles)) {
+      return refuse('this is not a Flowline vehicle list.');
+    }
+    if (!canPlaceVehicles()) return refuse('vehicles can be added only before Play. Press Reset to start over.');
+    if (documentData.vehicles.length > VEHICLE_IMPORT_MAX_ENTRIES) {
+      return refuse(`a file can list at most ${VEHICLE_IMPORT_MAX_ENTRIES} vehicles.`);
+    }
+    let added = 0;
+    const skipped = [];
+    documentData.vehicles.forEach((entry, index) => {
+      const result = vehicleFromImport(entry);
+      if (typeof result === 'string') {
+        skipped.push(`Vehicle ${index + 1}: ${result}`);
+        return;
+      }
+      state.vehicles.push(result);
+      state.nextId += 1;
+      added += 1;
+    });
+    if (added) refreshStartFrame();
+    const total = documentData.vehicles.length;
+    const summary = `Added ${added} of ${total} ${total === 1 ? 'vehicle' : 'vehicles'}; ${skipped.length} skipped.`;
+    state.eventText = summary;
+    updateReadouts();
+    draw();
+    return { summary, skipped, isAlert: skipped.length > 0 };
+  }
+
+  function showVehicleImportReport({ summary, skipped, isAlert }) {
+    const report = ui.vehicleImportReport;
+    report.replaceChildren();
+    const heading = document.createElement('p');
+    heading.textContent = summary;
+    report.append(heading);
+    if (skipped.length) {
+      const list = document.createElement('ul');
+      for (const reason of skipped) {
+        const item = document.createElement('li');
+        item.textContent = reason;
+        list.append(item);
+      }
+      report.append(list);
+    }
+    report.classList.toggle('is-alert', isAlert);
+    report.hidden = false;
+  }
+
   function setRunning(value) {
     running = value;
     ui.status.textContent = runningSlow ? 'RUNNING SLOW' : running ? 'IN MOTION' : (
@@ -899,6 +998,7 @@
     state = createState();
     state.settings = getSettings();
     if (errorBanner) errorBanner.hidden = true;
+    ui.vehicleImportReport.hidden = true;
     viewFrameIndex = null;
     replayingHistory = false;
     replayAccumulator = 0;
@@ -911,6 +1011,7 @@
     selectionDrag = null;
     placement = null;
     placementHistory.length = 0;
+    redoHistory.length = 0;
     canvas.closest('.micro-road-wrap').classList.remove('has-selection', 'is-selecting', 'is-vehicle-dragging');
     recordFrame(true);
     setRunning(false);
@@ -1017,7 +1118,7 @@
       updateBarrierFromPointer(event);
       return;
     }
-    if (placement) {
+    if (placement && placement.source === 'canvas') {
       movePlacement(point);
       return;
     }
@@ -1037,7 +1138,7 @@
     );
   });
   function stopBarrierDrag(event) {
-    if (placement) {
+    if (placement && placement.source === 'canvas') {
       finishPlacement(event);
       return;
     }
@@ -1077,16 +1178,19 @@
   function placementSpot(vehicle, point) {
     const metrics = roadMetrics();
     const scale = (metrics.right - metrics.left) / ROAD_LENGTH;
-    const half = vehicle.length / 2;
-    const meters = (point.x - metrics.left) / scale;
-    const position = Math.min(ROAD_LENGTH - half - 1, Math.max(half + 1, meters));
-    // Free placement: the exact height of the pointer sets the side-to-side position,
-    // kept inside the lane's edges so the vehicle never sticks out of the road.
+    // Free placement: the exact height of the pointer sets the side-to-side position.
     const laneFraction = (point.y - metrics.laneY[0]) / (metrics.laneY[1] - metrics.laneY[0]);
-    const rawLateral = laneFraction * LANE_WIDTH_M;
+    return spotFromMetres(vehicle, (point.x - metrics.left) / scale, laneFraction * LANE_WIDTH_M);
+  }
+
+  // A spot from road coordinates in metres: the centre of the vehicle along the road, and
+  // its side-to-side offset across both lanes. The 2D canvas and the 3D view both use it.
+  function spotFromMetres(vehicle, meters, rawLateral) {
+    const half = vehicle.length / 2;
+    const position = Math.min(ROAD_LENGTH - half - 1, Math.max(half + 1, meters));
     const lane = rawLateral < LANE_WIDTH_M / 2 ? 0 : 1;
-    // The whole road is open, including the space between the two lane centres.
-    // The car belongs to the lane it is nearest to.
+    // The whole road is open, including the space between the two lane centres, and the
+    // vehicle stays inside the road edges. The car belongs to the lane it is nearest to.
     const roadEdges = { min: S.lateralBounds(vehicle, 0).min, max: S.lateralBounds(vehicle, 1).max };
     const lateralPositionM = Math.min(roadEdges.max, Math.max(roadEdges.min, rawLateral));
     return {
@@ -1121,19 +1225,28 @@
     recordFrame(true);
   }
 
-  function startPlacement(vehicle, event) {
+  function beginPlacement(vehicle, source) {
     placement = {
       vehicle,
+      source,
       origin: { position: vehicle.position, lane: vehicle.lane, lateralPositionM: vehicle.lateralPositionM },
       lastSpot: { position: vehicle.position, lane: vehicle.lane, lateralPositionM: vehicle.lateralPositionM }
     };
-    canvas.setPointerCapture(event.pointerId);
     canvas.closest('.micro-road-wrap').classList.add('is-vehicle-dragging');
   }
 
+  function startPlacement(vehicle, event) {
+    beginPlacement(vehicle, 'canvas');
+    canvas.setPointerCapture(event.pointerId);
+  }
+
   function movePlacement(point) {
+    tryPlacementSpot(placementSpot(placement.vehicle, point));
+  }
+
+  // Moves the vehicle being placed to a spot if the spot is clear; otherwise says why not.
+  function tryPlacementSpot(spot) {
     const { vehicle } = placement;
-    const spot = placementSpot(vehicle, point);
     const problem = placementProblem(vehicle, spot);
     placement.lastProblem = problem;
     if (!problem) {
@@ -1149,12 +1262,13 @@
   function finishPlacement(event) {
     const { vehicle, origin, lastProblem } = placement;
     placement = null;
-    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    if (event && canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
     canvas.closest('.micro-road-wrap').classList.remove('is-vehicle-dragging');
     const moved = vehicle.position !== origin.position || vehicle.lane !== origin.lane
       || vehicle.lateralPositionM !== origin.lateralPositionM;
     if (moved) {
       placementHistory.push({ id: vehicle.id, ...origin });
+      redoHistory.length = 0;
       refreshStartFrame();
       state.eventText = `Vehicle ${vehicle.id + 1} moved. Use Undo move to go back.`;
     }
@@ -1165,17 +1279,45 @@
 
   function updateUndoButton() {
     ui.undoPlacement.disabled = !canPlaceVehicles() || placementHistory.length === 0;
+    ui.redoPlacement.disabled = !canPlaceVehicles() || redoHistory.length === 0;
   }
 
-  ui.undoPlacement.addEventListener('click', () => {
-    const entry = placementHistory.pop();
-    if (!entry || !canPlaceVehicles()) return;
+  // Steps one move back (from placementHistory) or forward (from redoHistory). The
+  // vehicle's spot before the step goes on the opposite stack so the step can be reversed.
+  function stepPlacementHistory(from, to, message) {
+    if (!canPlaceVehicles() || from.length === 0) return;
+    const entry = from.pop();
     const vehicle = state.vehicles.find((item) => item.id === entry.id);
-    if (vehicle) applySpot(vehicle, entry);
+    if (vehicle) {
+      to.push({ id: vehicle.id, position: vehicle.position, lane: vehicle.lane, lateralPositionM: vehicle.lateralPositionM });
+      applySpot(vehicle, entry);
+    }
     refreshStartFrame();
-    state.eventText = 'Last move undone.';
+    state.eventText = message;
     updateReadouts();
     draw();
+  }
+
+  ui.undoPlacement.addEventListener('click', () => stepPlacementHistory(placementHistory, redoHistory, 'Last move undone.'));
+  ui.redoPlacement.addEventListener('click', () => stepPlacementHistory(redoHistory, placementHistory, 'Move redone.'));
+
+  // The 3D view reports drags as plain road coordinates in metres. The spot rules, overlap
+  // checks and history stay here, so the 3D view never changes vehicle state itself.
+  window.addEventListener('flowline3dplacement', (event) => {
+    const { phase, vehicleId, positionM, lateralPositionM } = event.detail;
+    if (phase === 'start') {
+      const vehicle = canPlaceVehicles() && !placement
+        ? state.vehicles.find((item) => item.id === vehicleId)
+        : null;
+      if (vehicle) beginPlacement(vehicle, '3d');
+      return;
+    }
+    if (!placement || placement.source !== '3d') return;
+    if (phase === 'move') {
+      tryPlacementSpot(spotFromMetres(placement.vehicle, positionM, lateralPositionM));
+    } else if (phase === 'end') {
+      finishPlacement();
+    }
   });
 
   ui.play.addEventListener('click', start);
@@ -1306,6 +1448,24 @@
         ui.event.classList.add('is-alert');
       }
       ui.scenarioLoad.value = '';
+    };
+    reader.readAsText(file);
+  });
+  ui.vehicleImport.addEventListener('change', () => {
+    const file = ui.vehicleImport.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      let documentData = null;
+      try {
+        documentData = JSON.parse(reader.result);
+      } catch (error) {
+        showVehicleImportReport({ summary: 'Vehicles not added: the file is not valid JSON.', skipped: [], isAlert: true });
+        ui.vehicleImport.value = '';
+        return;
+      }
+      showVehicleImportReport(importVehicles(documentData));
+      ui.vehicleImport.value = '';
     };
     reader.readAsText(file);
   });
