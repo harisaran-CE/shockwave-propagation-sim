@@ -184,11 +184,6 @@ import * as THREE from './vendor/three.module.min.js';
 
   function vehicleGeometry(kind, length, width) { return new THREE.BoxGeometry(length, 1, width); }
 
-  const MAX_VEHICLES = 260;
-  const vehiclePools = {};
-  const wheelRadiusByKind = { car: 0.34, motorcycle: 0.26, rickshaw: 0.3, bus: 0.5, truck: 0.52 };
-  const prevLateral = new Map();
-
   function makeVehicleGroup(kind) {
     const group = new THREE.Group();
     const paint = new THREE.MeshPhysicalMaterial({
@@ -490,19 +485,6 @@ import * as THREE from './vendor/three.module.min.js';
     if (eventLabel?.element) eventLabel.element.remove();
     speedLabel = null; eventLabel = null; scene = null; renderer = null; initialized = false;
     for (const k of Object.keys(vehiclePools)) delete vehiclePools[k];
-  }
-    });
-    renderer?.dispose();
-    trailPool.length = 0;
-    trailMaterials.clear();
-    trailGeometry = null;
-    if (speedLabel?.element) speedLabel.element.remove();
-    if (eventLabel?.element) eventLabel.element.remove();
-    speedLabel = null;
-    eventLabel = null;
-    scene = null;
-    renderer = null;
-    initialized = false;
   }
 
   function updateCamera(delta) {
