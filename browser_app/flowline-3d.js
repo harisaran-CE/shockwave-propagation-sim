@@ -129,7 +129,7 @@
     for (const z of [-13, 13]) {
       const verge = new THREE.Mesh(new THREE.BoxGeometry(ROAD_LENGTH, 0.16, 5), material(0xB8C2CC, 0.95));
       verge.position.set(250, -0.22, z);
-      verge.receiveShadow = false;
+      verge.receiveShadow = true;
       roadGroup.add(verge);
     }
     scene.add(roadGroup);
@@ -144,7 +144,7 @@
       for (const z of [-8.2, 8.2]) {
         const pole = new THREE.Mesh(poleGeometry, poleMat);
         pole.position.set(x, 0.55, z);
-        pole.receiveShadow = false;
+        pole.receiveShadow = true;
         propGroup.add(pole);
       }
     }
@@ -307,7 +307,7 @@
       addWheel(0.9, 0.3, 0); addWheel(-0.8, 0.3, 0.55); addWheel(-0.8, 0.3, -0.55);
     }
 
-    group.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
+    group.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     group.userData.wheels = wheels;
     group.userData.tailL = group.getObjectByName('tailL');
     group.userData.tailR = group.getObjectByName('tailR');
@@ -319,6 +319,15 @@
   }
 
   function createVehicleLayers() {
+    contactShadows = new THREE.InstancedMesh(
+      new THREE.CircleGeometry(1, 10),
+      new THREE.MeshBasicMaterial({ color: 0x071116, transparent: true, opacity: 0.35, depthWrite: false }),
+      MAX_VEHICLES
+    );
+    contactShadows.rotation.x = -Math.PI / 2;
+    contactShadows.position.y = 0.01;
+    scene.add(contactShadows);
+
     for (const kind of Object.keys(COLORS)) {
       vehiclePools[kind] = [];
       for (let i = 0; i < 60; i++) {
@@ -383,7 +392,17 @@
       if (g.userData.tailL) { g.userData.tailL.material.color.setHex(tailColor); }
       if (g.userData.tailR) { g.userData.tailR.material.color.setHex(tailColor); }
 
+      // Contact shadow
+      dummy.position.set(vehicle.position, 0.015, lateralSmooth);
+      dummy.scale.set(Math.max(1.5, vehicle.length * 0.55), Math.max(0.4, vehicle.width * 0.55), 1);
+      dummy.rotation.set(-Math.PI / 2, 0, 0);
+      dummy.updateMatrix();
+      contactShadows.setMatrixAt(shadowIndex, dummy.matrix);
+      shadowIndex++;
     }
+
+    contactShadows.count = shadowIndex;
+    contactShadows.instanceMatrix.needsUpdate = true;
 
     const selected = frame.vehicles.find((vehicle) => frame.selectedVehicleIds.includes(vehicle.id));
     if (selected) {
@@ -501,7 +520,7 @@
     barrierGroup.visible = position !== null && position !== undefined;
     if (barrierGroup.visible) {
       barrierGroup.position.set(position, 0, 0);
-      barrierGroup.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
+      barrierGroup.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     }
     if (glowMaterial) glowMaterial.opacity = 0.45 + Math.sin(performance.now() * 0.01) * 0.35;
   }
@@ -572,7 +591,7 @@
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.2;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.shadowMap.enabled = false;
+    renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0xE8ECF1);
@@ -581,7 +600,12 @@
     scene.add(new THREE.HemisphereLight(0xcfe2f3, 0x1a2a1f, 1.15));
     const keyLight = new THREE.DirectionalLight(0xfff0d6, 3.0);
     keyLight.position.set(-80, 140, 70);
-    keyLight.castShadow = false;
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.set(2048, 2048);
+    keyLight.shadow.camera.left = -320; keyLight.shadow.camera.right = 320;
+    keyLight.shadow.camera.top = 120; keyLight.shadow.camera.bottom = -120;
+    keyLight.shadow.camera.near = 1; keyLight.shadow.camera.far = 550;
+    keyLight.shadow.bias = -0.0005;
     scene.add(keyLight);
     const fillLight = new THREE.DirectionalLight(0x9ec5e6, 0.7);
     fillLight.position.set(120, 60, -80);
