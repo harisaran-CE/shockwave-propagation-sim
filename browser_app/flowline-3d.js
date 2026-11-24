@@ -629,24 +629,13 @@
   }
 
   function setActive(value) {
-    active = value;
-    canvas.hidden = !value;
-    document.getElementById('microRoad').hidden = value;
-    view2d.classList.toggle('is-active', !value);
-    view3d.classList.toggle('is-active', value);
-    view2d.setAttribute('aria-pressed', String(!value));
-    view3d.setAttribute('aria-pressed', String(value));
-    roadWrap.classList.toggle('is-3d', value);
-    if (value) {
+    active = !!value;
+    if (active) {
       resize();
       if (!animationFrame) {
         fpsStart = performance.now();
         animationFrame = requestAnimationFrame(render);
       }
-    } else if (animationFrame) {
-      disposeScene();
-    } else {
-      disposeScene();
     }
   }
 
