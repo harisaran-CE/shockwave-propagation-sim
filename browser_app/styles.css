@@ -78,6 +78,7 @@ button { cursor: pointer; }
 .vp-controls { display: inline-flex; align-items: center; gap: 6px; }
 .vp-meta { font-size: 11px; color: var(--text-quiet); }
 .canvas-wrap, .micro-road-wrap { flex: 1; min-height: 0; position: relative; overflow: hidden; background: #E8ECF1; }
+.canvas-wrap canvas, .micro-road-wrap canvas { width: 100%; height: 100%; display: block; }
 #microRoad, #microRoad3d { display: block; width: 100%; height: 100%; }
 #microRoad { cursor: default; touch-action: none; }
 #microRoad3d { cursor: grab; touch-action: none; }
