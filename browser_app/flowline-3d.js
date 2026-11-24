@@ -11,6 +11,19 @@
 
   const ROAD_LENGTH = 500;
   const ROAD_WIDTH = 18;
+  const PALETTES = {
+    car: [0x4F86C6, 0x3FB28A, 0xD97706, 0xC75C5C, 0x7C6FD6, 0x2F855A, 0xB45309, 0x64748B],
+    motorcycle: [0xE6BB72, 0xD97706],
+    rickshaw: [0xD8A951, 0xC2410C],
+    bus: [0x5FA8D3, 0x4A90A4, 0xE07A5F, 0x3D5A80, 0x7A9E7E],
+    truck: [0x9AA5B1, 0x7B8794, 0xB08D57, 0x6B7280, 0x8D99AE, 0xA3A380]
+  };
+  function colorForVehicle(vehicle) {
+    const pal = PALETTES[vehicle.kind] || [0x888888];
+    const idx = Math.abs((vehicle.id * 2654435761) >>> 0) % pal.length;
+    return pal[idx];
+  }
+
   const COLORS = {
     car: 0x80c4a4, motorcycle: 0xe6bb72, rickshaw: 0xd8a951,
     bus: 0x7cabc0, truck: 0xac9d89
@@ -263,6 +276,7 @@
     } else if (kind === 'truck') {
       const cab = new THREE.Mesh(new THREE.BoxGeometry(2.8, 2.2, 2.4), paint);
       cab.position.set(2.8, 1.35, 0);
+      group.userData.cabPaint = paint;
       const cargo = new THREE.Mesh(new THREE.BoxGeometry(5.5, 2.0, 2.35), new THREE.MeshStandardMaterial({ color: 0x88939a, roughness: 0.6, metalness: 0.2 }));
       cargo.position.set(-1.5, 1.35, 0);
       const cabGlass = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.9, 2.0), glass);
@@ -297,6 +311,8 @@
     group.userData.wheels = wheels;
     group.userData.tailL = group.getObjectByName('tailL');
     group.userData.tailR = group.getObjectByName('tailR');
+    group.userData.paint = paint;
+    group.userData.cabPaint = (kind === 'truck') ? group.userData.cabPaint : paint;
     group.userData.baseY = 0;
     group.visible = false;
     return group;
@@ -340,6 +356,11 @@
       if (idx >= pool.length) continue;
       const g = pool[idx];
       g.visible = true;
+
+      g.userData.vehicleId = vehicle.id;
+      const vColor = colorForVehicle(vehicle);
+      if (g.userData.paint) g.userData.paint.color.setHex(vColor);
+      if (g.userData.cabPaint) g.userData.cabPaint.color.setHex(vColor);
 
       const baseScale = vehicle.kind === 'bus' ? 10 : vehicle.kind === 'truck' ? 8 : vehicle.kind === 'motorcycle' ? 2 : 4;
       const sx = Math.max(0.6, vehicle.length / baseScale);
