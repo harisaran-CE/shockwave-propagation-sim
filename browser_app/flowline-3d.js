@@ -1,4 +1,4 @@
-import * as THREE from './vendor/three.module.min.js';
+﻿import * as THREE from './vendor/three.module.min.js';
 
 (() => {
   'use strict';
@@ -96,17 +96,17 @@ import * as THREE from './vendor/three.module.min.js';
     asphalt.position.set(250, -0.12, 0);
     asphalt.receiveShadow = true;
     roadGroup.add(asphalt);
-    const shoulder = new THREE.Mesh(new THREE.BoxGeometry(ROAD_LENGTH, 0.12, 28), material(0x26343d, 0.95));
+    const shoulder = new THREE.Mesh(new THREE.BoxGeometry(ROAD_LENGTH, 0.12, 28), material(0x9BA7B0, 0.95));
     shoulder.position.set(250, -0.25, 0);
     shoulder.receiveShadow = true;
     roadGroup.add(shoulder);
     for (const z of [-9, 9]) {
-      const edge = new THREE.Mesh(new THREE.BoxGeometry(ROAD_LENGTH, 0.04, 0.14), material(0xe4ddbd, 0.6));
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(ROAD_LENGTH, 0.04, 0.14), material(0xF3F4F6, 0.55));
       edge.position.set(250, 0.02, z);
       roadGroup.add(edge);
     }
     for (const z of [-4.5, 0, 4.5]) {
-      const lineMaterial = material(0xf0f0dc, 0.5);
+      const lineMaterial = material(0xF7F8FA, 0.45);
       for (let x = 5; x < ROAD_LENGTH; x += 16) {
         const dash = new THREE.Mesh(new THREE.BoxGeometry(8, 0.035, 0.09), lineMaterial);
         dash.position.set(x, 0.03, z);
@@ -114,7 +114,7 @@ import * as THREE from './vendor/three.module.min.js';
       }
     }
     for (const z of [-13, 13]) {
-      const verge = new THREE.Mesh(new THREE.BoxGeometry(ROAD_LENGTH, 0.16, 5), material(0x1d3a38, 0.95));
+      const verge = new THREE.Mesh(new THREE.BoxGeometry(ROAD_LENGTH, 0.16, 5), material(0xB8C2CC, 0.95));
       verge.position.set(250, -0.22, z);
       verge.receiveShadow = true;
       roadGroup.add(verge);
@@ -590,8 +590,8 @@ import * as THREE from './vendor/three.module.min.js';
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     scene = new THREE.Scene();
-    scene.background = makeSkyTexture();
-    scene.fog = new THREE.Fog(0x182b42, 240, 750);
+    scene.background = new THREE.Color(0xE8ECF1);
+    scene.fog = new THREE.Fog(0xE8ECF1, 320, 900);
     camera = new THREE.PerspectiveCamera(44, 2, 0.1, 900);
     scene.add(new THREE.HemisphereLight(0xcfe2f3, 0x1a2a1f, 1.15));
     const keyLight = new THREE.DirectionalLight(0xfff0d6, 3.0);
@@ -711,3 +711,5 @@ import * as THREE from './vendor/three.module.min.js';
     window.dispatchEvent(new Event('flowline3dready'));
   }
 })();
+
+

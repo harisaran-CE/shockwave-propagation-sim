@@ -876,23 +876,22 @@
     report.hidden = false;
   }
 
-  function setRunning(value) {
+    function setRunning(value) {
     running = value;
-    ui.status.textContent = runningSlow ? 'RUNNING SLOW' : running ? 'IN MOTION' : (
-      viewFrameIndex !== null ? 'HISTORY' : state.endReached ? 'QUEUE SPILLBACK' : (
+    const statusText = runningSlow ? 'RUNNING SLOW' : running ? 'RUNNING' : (
+      viewFrameIndex !== null ? 'HISTORY' : state.endReached ? 'CONGESTION' : (
         state.time >= Number(ui.duration.value) ? 'COMPLETE' : (state.time ? 'PAUSED' : 'READY')
       )
     );
+    ui.status.textContent = statusText;
+    if (ui.playIcon) ui.playIcon.textContent = running ? '⏸' : '▶';
+    if (ui.playText) ui.playText.textContent = running ? 'Pause' : viewFrameIndex !== null ? 'Replay' : (state.endReached || state.time >= Number(ui.duration.value) ? 'Run' : (state.time ? 'Resume' : 'Run'));
+    const badge = $('microStatusBadge');
+    if (badge) badge.className = 'status-badge' + (running ? ' is-running' : viewFrameIndex !== null ? ' is-history' : (!running && (state.endReached || state.time >= Number(ui.duration.value))) ? ' is-complete' : '');
     ui.status.classList.toggle('is-running', running);
     ui.status.classList.toggle('is-history', viewFrameIndex !== null);
     ui.status.classList.toggle('is-congestion', !running && state.endReached);
-    ui.status.classList.toggle('is-complete', !running && !state.endReached
-      && state.time >= Number(ui.duration.value));
-    ui.playIcon.textContent = running ? '||' : '>';
-    ui.playText.textContent = running ? 'Pause' : viewFrameIndex !== null ? 'Replay from here' : (
-      state.endReached || state.time >= Number(ui.duration.value)
-        ? 'Run again' : (state.time ? 'Resume' : 'Play')
-    );
+    ui.status.classList.toggle('is-complete', !running && !state.endReached && state.time >= Number(ui.duration.value));
   }
 
   function showNumericalError(vehicle, field) {
@@ -1366,12 +1365,22 @@
     ui.timeline.value = marker.dataset.frameIndex;
     ui.timeline.dispatchEvent(new Event('input', { bubbles: true }));
   });
-  ui.themeToggle.addEventListener('click', () => {
-    const light = document.documentElement.dataset.theme !== 'light';
-    document.documentElement.dataset.theme = light ? 'light' : 'dark';
-    ui.themeToggle.textContent = light ? 'DARK VIEW' : 'LIGHT VIEW';
-    ui.themeToggle.setAttribute('aria-pressed', String(light));
-  });
+    if (ui.themeToggle) ui.themeToggle.addEventListener('click', () => {});
+  const viewButtons = Array.from(document.querySelectorAll('[data-view]'));
+  function applyViewportMode(mode) {
+    const m = mode === '2d' || mode === '3d' ? mode : 'split';
+    viewButtons.forEach((b) => { const active = b.dataset.view === m; b.classList.toggle('is-active', active); b.setAttribute('aria-pressed', String(active)); });
+    const panel2d = $('panel2d'), panel3d = $('panel3d'), divider = $('viewportDivider');
+    if (panel2d) panel2d.classList.toggle('hidden', m === '3d');
+    if (panel3d) panel3d.classList.toggle('hidden', m === '2d');
+    if (divider) divider.classList.toggle('hidden', m !== 'split');
+    window.setTimeout(() => { resize(); draw(); window.flowline3d?.syncToPanelVisibility?.(); }, 0);
+  }
+  viewButtons.forEach((b) => b.addEventListener('click', () => applyViewportMode(b.dataset.view)));
+  document.querySelectorAll('input[name="playbackSpeed"]').forEach((r) => r.addEventListener('change', () => { if (r.checked) { ui.speed.value = r.value; ui.speed.dispatchEvent(new Event('change')); } }));
+  ui.speed.addEventListener('change', () => { const v = ui.speed.value; document.querySelectorAll('input[name="playbackSpeed"]').forEach((r) => { r.checked = r.value === v; }); });
+  const stepBtn = $('microStep'); if (stepBtn) stepBtn.addEventListener('click', () => { if (running) { setRunning(false); if (rafId) window.cancelAnimationFrame(rafId); } stepOnce(); draw(); });
+  applyViewportMode('split');
   ui.cancelSpeedCap.addEventListener('click', () => {
     speedEditActive = false;
     updateInspector();
@@ -1417,17 +1426,14 @@
   });
   ui.csv.addEventListener('click', exportCsv);
   ui.json.addEventListener('click', exportJson);
-  ui.crashExport.addEventListener('click', () => {
+    ui.crashExport.addEventListener('click', () => {
     if (!state.crashes.length) return;
-    download('flowline-crash-report.json', JSON.stringify({
-      model: 'individual-vehicle',
-      reportType: 'report-only collision observation',
-      appVersion: APP_VERSION,
-      settings: getSettings(),
-      crashEvents: state.crashes,
-      limitations: 'Illustrative, uncalibrated vehicle behavior; not for engineering or safety decisions.'
-    }, null, 2), 'application/json');
+    const header = 'time_s,vehicle_a,vehicle_b,impact_speed_kmh,stopping_distance_m,severity';
+    const rows = state.crashes.map((c) => [Number(c.timeSeconds ?? c.time ?? 0).toFixed(2), c.vehicleA?.id ?? c.a ?? '', c.vehicleB?.id ?? c.b ?? '', Number(c.impactSpeedKmh ?? c.impactSpeed ?? 0).toFixed(2), Number(c.stoppingDistanceM ?? c.stoppingDistance ?? 0).toFixed(2), c.severity ?? ''].join(','));
+    download('flowline-collision-log.csv', header + '\n' + rows.join('\n'), 'text/csv');
   });
+  const crashClear = microCrashClear;
+  if (crashClear) crashClear.addEventListener('click', () => { if (state && state.crashes) { state.crashes.length = 0; renderCrashReport(null); draw(); } });
   ui.editorToggle.addEventListener('click', () => {
     appModel.mode = appModel.mode === 'editor' ? 'simulation' : 'editor';
     ui.editorBody.hidden = appModel.mode !== 'editor';
@@ -1560,3 +1566,5 @@
   updateScenarioControls();
   reset();
 })();
+
+
