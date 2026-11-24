@@ -540,6 +540,7 @@
       const fps = fpsFrames * 1000 / Math.max(1, now - fpsStart);
       if (fps < 22 && active) {
         enableLowGraphics(true);
+        setActive(false);
       } else if (fps < 32) {
         enableLowGraphics(true);
       }
@@ -613,11 +614,9 @@
   function resize() {
     if (!initialized) return;
     const bounds = canvas.getBoundingClientRect();
-    const width = Math.floor(bounds.width || canvas.clientWidth || roadWrap?.clientWidth || 0);
-    const height = Math.floor(bounds.height || canvas.clientHeight || roadWrap?.clientHeight || 0);
-    if (!width || !height) return;
-    renderer.setSize(width, height, false);
-    camera.aspect = width / height;
+    if (!bounds.width || !bounds.height) return;
+    renderer.setSize(bounds.width, bounds.height, false);
+    camera.aspect = bounds.width / bounds.height;
     camera.updateProjectionMatrix();
   }
 
@@ -677,12 +676,8 @@
   }, { passive: false });
   function syncToPanelVisibility() {
     const panel3d = canvas.closest('.viewport-panel');
-    const visible = !!(panel3d && !panel3d.classList.contains('hidden'));
+    const visible = !!(panel3d && !panel3d.classList.contains('hidden') && canvas.getClientRects().length > 0);
     setActive(visible);
-    if (visible) {
-      resize();
-      requestAnimationFrame(() => { resize(); });
-    }
   }
 
   window.addEventListener('resize', () => { resize(); syncToPanelVisibility(); });
