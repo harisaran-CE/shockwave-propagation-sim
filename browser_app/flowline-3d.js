@@ -688,10 +688,20 @@
       event.preventDefault();
     }
   }, { passive: false });
-  window.addEventListener('resize', resize);
+  function syncToPanelVisibility() {
+    const panel3d = canvas.closest('.viewport-panel');
+    const visible = !!(panel3d && !panel3d.classList.contains('hidden') && canvas.getClientRects().length > 0);
+    setActive(visible);
+  }
+
+  window.addEventListener('resize', () => { resize(); syncToPanelVisibility(); });
   if (buildScene()) {
-    window.flowline3d = { renderFrame, setActive };
+    window.flowline3d = { renderFrame, setActive, syncToPanelVisibility };
+    const panel3d = canvas.closest('.viewport-panel');
+    if ('ResizeObserver' in window && panel3d) new ResizeObserver(() => { resize(); syncToPanelVisibility(); }).observe(panel3d);
+    if (panel3d && 'MutationObserver' in window) new MutationObserver(syncToPanelVisibility).observe(panel3d, { attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
     window.dispatchEvent(new Event('flowline3dready'));
+    syncToPanelVisibility();
   }
 })();
 
