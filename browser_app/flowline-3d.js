@@ -124,33 +124,16 @@
 
   function addProps() {
     propGroup = new THREE.Group();
-    const poleGeometry = new THREE.CylinderGeometry(0.08, 0.12, 5, 6);
-    const poleMat = material(0x5d7071, 0.7, 0, 0.3);
-    const poleMesh = new THREE.InstancedMesh(poleGeometry, poleMat, 28);
-    const signGeometry = new THREE.BoxGeometry(1.7, 1.15, 0.08);
-    const signMesh = new THREE.InstancedMesh(signGeometry, material(0x426e76, 0.5, 0, 0.1), 14);
-    for (let i = 0; i < 14; i += 1) {
-      const x = 15 + i * 36;
-      for (const z of [-15.5, 15.5]) {
-        dummy.position.set(x, 2.5, z); dummy.rotation.set(0, 0, 0); dummy.updateMatrix();
-        poleMesh.setMatrixAt(i * 2 + (z > 0 ? 1 : 0), dummy.matrix);
+    const poleGeometry = new THREE.CylinderGeometry(0.06, 0.08, 1.1, 8);
+    const poleMat = material(0x9AA6B0, 0.65, 0, 0.1);
+    for (let i = 0; i < 16; i += 1) {
+      const x = 15 + i * 32;
+      for (const z of [-8.2, 8.2]) {
+        const pole = new THREE.Mesh(poleGeometry, poleMat);
+        pole.position.set(x, 0.55, z);
+        pole.receiveShadow = true;
+        propGroup.add(pole);
       }
-      dummy.position.set(x + 2, 4, i % 2 ? -15.5 : 15.5); dummy.updateMatrix();
-      signMesh.setMatrixAt(i, dummy.matrix);
-    }
-    poleMesh.castShadow = true; poleMesh.receiveShadow = true;
-    signMesh.castShadow = true;
-    propGroup.add(poleMesh, signMesh);
-
-    // Simple distant buildings for depth
-    const bldMat = new THREE.MeshStandardMaterial({ color: 0x2a3a44, roughness: 0.9, metalness: 0.05 });
-    for (let i = 0; i < 18; i++) {
-      const w = 8 + (i * 7 % 14), h = 6 + (i * 11 % 22), d = 8 + (i * 5 % 10);
-      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), bldMat);
-      const side = i % 2 === 0 ? -1 : 1;
-      b.position.set(20 + i * 28, h / 2 - 0.5, side * (28 + (i % 3) * 6));
-      b.receiveShadow = true;
-      propGroup.add(b);
     }
     scene.add(propGroup);
   }
@@ -360,7 +343,7 @@
 
       const baseScale = vehicle.kind === 'bus' ? 10 : vehicle.kind === 'truck' ? 8 : vehicle.kind === 'motorcycle' ? 2 : 4;
       const sx = Math.max(0.6, vehicle.length / baseScale);
-      const sz = Math.max(0.6, vehicle.width / (vehicle.kind === 'motorcycle' ? 0.8 : 2));
+      const sz = Math.max(0.75, vehicle.width / (vehicle.kind === 'motorcycle' ? 0.7 : 1.85));
       g.scale.set(sx, 1, sz);
 
       // Smooth lateral interpolation for realistic lane changes
