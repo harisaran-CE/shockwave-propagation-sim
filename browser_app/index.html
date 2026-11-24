@@ -3,115 +3,342 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f3f5f2">
+  <meta name="theme-color" content="#F4F5F7">
   <meta name="description" content="Simulate individual cars, motorcycles, auto-rickshaws, buses and trucks, with lane changes and overtaking.">
   <title>Flowline - Vehicle Traffic Studio</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="microscopic.css">
   <script src="flowline-sim.js" defer></script>
   <script src="microscopic.js" defer></script>
   <script type="module" src="flowline-3d.js"></script>
 </head>
 <body>
+  <!-- ========================================================================
+       TOP COMMAND BAR (44px)
+       ======================================================================== -->
   <header class="topbar">
-    <a class="brand" href="index.html" aria-label="Flowline vehicle traffic studio"><span class="brand-mark" aria-hidden="true">FL</span><span>flowline</span></a>
-    <div class="topbar-tools">
-      <span class="top-note">INDIVIDUAL VEHICLE SIMULATION <i></i> BROWSER EDITION</span>
-      <button class="theme-toggle" id="microThemeToggle" type="button" aria-pressed="false">LIGHT VIEW</button>
+    <div class="topbar-left">
+      <div class="app-title">Flowline</div>
+      <span class="status-badge" id="microStatus" aria-live="polite">READY</span>
+    </div>
+
+    <div class="topbar-center">
+      <div class="clock-readout">
+        <span class="clock-label">SIM TIME</span>
+        <strong id="microTime">00:00.00</strong><span class="clock-unit">s</span>
+      </div>
+
+      <div class="speed-segmented" role="group" aria-label="Playback speed">
+        <button type="button" class="speed-seg" data-speed="0.5">0.5x</button>
+        <button type="button" class="speed-seg is-active" data-speed="1">1x</button>
+        <button type="button" class="speed-seg" data-speed="2">2x</button>
+        <button type="button" class="speed-seg" data-speed="5">5x</button>
+      </div>
+
+      <div class="transport-btns">
+        <button class="transport-btn transport-primary" id="microPlay" type="button"><span id="microPlayIcon" aria-hidden="true">▶</span><span id="microPlayText">Play</span></button>
+        <button class="transport-btn" id="microReset" type="button">Reset</button>
+        <button class="transport-btn" id="microStep" type="button">Step</button>
+      </div>
+    </div>
+
+    <div class="topbar-right">
+      <div class="viewport-switcher" role="group" aria-label="Viewport layout">
+        <button type="button" class="vp-btn is-active" data-vp="split">Split 2D + 3D</button>
+        <button type="button" class="vp-btn" data-vp="3d">3D Viewport</button>
+        <button type="button" class="vp-btn" data-vp="2d">2D Schematic</button>
+      </div>
+      <button class="theme-toggle" id="microThemeToggle" type="button" aria-pressed="false">Theme</button>
     </div>
   </header>
 
-  <main class="micro-layout">
-    <section class="micro-intro">
-      <div class="eyebrow"><span class="live-dot"></span> VEHICLE TRAFFIC MODEL</div>
-      <h1>Vehicle traffic simulation</h1>
-      <p>Individual vehicles, lane changes, and road restrictions on a 500 m road.</p>
-    </section>
 
-    <section class="micro-workspace" aria-label="Microscopic vehicle simulation">
-      <div class="scene-head">
-        <div>
-          <div class="section-kicker">LIVE VEHICLE VIEW <span class="scene-status" id="microStatus" aria-live="polite">READY</span></div>
-          <h2>Every marker is a vehicle</h2>
-        </div>
-        <div class="scene-tools">
-          <div class="view-toggle" role="group" aria-label="Scene view">
-            <button id="microView2d" class="view-toggle-button is-active" type="button" aria-pressed="true">2D</button>
-            <button id="microView3d" class="view-toggle-button" type="button" aria-pressed="false">3D</button>
-          </div>
-          <div class="view-toggle scene-3d-controls" role="group" aria-label="3D camera mode">
-            <button class="view-toggle-button is-active" type="button" data-3d-mode="chase">Chase</button>
-            <button class="view-toggle-button" type="button" data-3d-mode="orbit">Orbit</button>
-            <button class="view-toggle-button" type="button" data-3d-mode="top">Top</button>
-            <button class="view-toggle-button" type="button" data-3d-mode="cinematic">Cinematic</button>
-          </div>
-          <button class="scene-3d-option" type="button" data-3d-trails aria-pressed="true">Trails</button>
+  <!-- ========================================================================
+       MAIN WORKSPACE (100vh, zero-scroll)
+       ======================================================================== -->
+  <div class="main-workspace">
+
+    <!-- ========================================================================
+         CENTER VIEWPORT STAGE
+         ======================================================================== -->
+    <div class="viewport-stage">
+
+      <!-- Upper Viewport Area -->
+      <div class="viewport-upper">
+        <div class="viewport-header">
+          <span class="viewport-title" id="viewportTitle">2D KINEMATIC SCHEMATIC</span>
+          <div class="viewport-controls">
+            <div class="view-toggle scene-3d-controls" role="group" aria-label="3D camera mode">
+              <button class="view-toggle-button is-active" type="button" data-3d-mode="chase">Chase</button>
+              <button class="view-toggle-button" type="button" data-3d-mode="orbit">Orbit</button>
+              <button class="view-toggle-button" type="button" data-3d-mode="top">Top</button>
+              <button class="view-toggle-button" type="button" data-3d-mode="cinematic">Cinematic</button>
+            </div>
+            <button class="scene-3d-option" type="button" data-3d-trails aria-pressed="true">Trails</button>
             <button class="scene-3d-option" type="button" data-3d-low-graphics aria-pressed="false">Low graphics</button>
-          <button class="scene-3d-option" type="button" data-3d-freeze aria-pressed="false">Freeze frame</button>
-          <div class="clock"><span class="clock-label">SIMULATED TIME</span><strong id="microTime">00:00</strong></div>
+            <button class="scene-3d-option" type="button" data-3d-freeze aria-pressed="false">Freeze frame</button>
+          </div>
         </div>
-      </div>
 
-      <div class="micro-road-wrap">
-        <canvas id="microRoad" role="img" aria-label="Two-lane road with four marked paths in each lane, showing individually simulated vehicles. Drag across the road to select vehicles; drag the barrier marker to move it during the simulation."></canvas>
-        <canvas id="microRoad3d" role="img" aria-label="Three-dimensional measured road scene showing the simulated vehicles and barrier." hidden></canvas>
-      </div>
-      <div class="field-hint barrier-drag-hint">Drag the barrier itself on the road to move it while the simulation runs.</div>
-      <div class="micro-distance"><span>0 m <small>UPSTREAM</small></span><span>500 m <small>DOWNSTREAM</small></span></div>
+        <div class="viewport-content">
+          <!-- 2D Canvas Panel -->
+          <div class="viewport-panel vp-2d">
+            <div class="micro-road-wrap" id="microRoadWrap">
+              <canvas id="microRoad" role="img" aria-label="Two-lane road with four marked paths in each lane, showing individually simulated vehicles. Drag across the road to select vehicles; drag the barrier marker to move it during the simulation."></canvas>
+              <canvas id="microRoad3d" role="img" aria-label="Three-dimensional measured road scene showing the simulated vehicles and barrier." hidden></canvas>
+            </div>
+          </div>
 
-      <div class="micro-timeline">
-        <div class="timeline-labels"><span>RUN HISTORY</span><span id="microTimelineTime">00:00</span></div>
-        <div class="timeline-track">
-          <input id="microTimeline" type="range" min="0" max="0" value="0" step="1" aria-label="Simulation history">
-          <div class="timeline-markers" id="microTimelineMarkers" aria-label="Run events">
-            <button type="button" class="timeline-marker marker-conflict" data-event="conflict" aria-label="First conflict" hidden>CONFLICT</button>
-            <button type="button" class="timeline-marker marker-braking" data-event="braking" aria-label="First braking event" hidden>BRAKING</button>
-            <button type="button" class="timeline-marker marker-crash" data-event="crash" aria-label="Crash detected" hidden disabled>CRASH</button>
+          <!-- 3D Canvas Panel -->
+          <div class="viewport-panel vp-3d hidden">
+            <div class="micro-road-wrap" id="microRoadWrap3d">
+              <canvas id="microRoad3d" role="img" aria-label="Three-dimensional measured road scene showing the simulated vehicles and barrier."></canvas>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="micro-legend" aria-label="Vehicle types">
-        <span><i class="swatch car"></i>Cars <b id="carsCount">0</b></span>
-        <span><i class="swatch motorcycle"></i>Motorcycles <b id="motorcyclesCount">0</b></span>
-        <span><i class="swatch rickshaw"></i>Auto-rickshaws <b id="rickshawsCount">0</b></span>
-        <span><i class="swatch bus"></i>Buses <b id="busesCount">0</b></span>
-        <span><i class="swatch truck"></i>Trucks <b id="trucksCount">0</b></span>
-      </div>
+      <!-- Lower Telemetry Dock (220px) -->
+      <div class="telemetry-dock">
+        <!-- Collision Observation Log -->
+        <div class="telemetry-panel collision-log">
+          <div class="panel-head">
+            <span class="panel-title">COLLISION OBSERVATION LOG</span>
+            <span class="panel-count" id="microCrashCount">0</span>
+            <button class="panel-btn" id="microCrashExport">Export CSV</button>
+            <button class="panel-btn panel-btn-quiet" id="microCrashClear">Clear</button>
+          </div>
+          <div class="panel-body">
+            <table class="collision-table">
+              <thead>
+                <tr><th>Time</th><th>Vehicle ID</th><th>Impact Speed</th><th>Stopping Dist</th><th>Severity</th></tr>
+              </thead>
+              <tbody id="microCrashVehicles"></tbody>
+            </table>
+            <div class="empty-state" id="microCrashEmpty">No collision events recorded in current run</div>
+          </div>
+        </div>
 
-      <div class="micro-readouts" aria-live="polite">
-        <div><span>VEHICLES ON ROAD</span><strong id="microVehicleCount">0</strong></div>
-        <div><span>MEAN SPEED</span><strong id="microMeanSpeed">0 <small>km/h</small></strong></div>
-        <div><span>ROAD DENSITY</span><strong id="microDensity">0 <small>veh/km/lane</small></strong></div>
-        <div><span>EXITED VEHICLES</span><strong id="microExited">0</strong></div>
-        <div><span>QUEUED AT BARRIER</span><strong id="microQueue">0</strong></div>
-        <div><span>COMPLETED OVERTAKES</span><strong id="microOvertakes">0</strong></div>
-        <div><span>LANE CHANGES</span><strong id="microLaneChanges">0</strong></div>
-        <div><span>CONTACTS PREVENTED</span><strong id="microContacts">0</strong></div>
+        <!-- Selected Vehicle Inspector -->
+        <div class="telemetry-panel vehicle-inspector">
+          <div class="panel-head">
+            <span class="panel-title">SELECTED VEHICLE TELEMETRY</span>
+            <span class="panel-vehicle-id" id="microSelectionCount">0 SELECTED</span>
+          </div>
+          <div class="panel-body">
+            <div class="inspector-empty" id="microInspectorEmpty">No vehicle selected.</div>
+            <div class="inspector-content" id="microInspectorContent" hidden>
+              <div class="telemetry-grid">
+                <div class="telemetry-row">
+                  <span class="telemetry-key">Vehicle type</span>
+                  <strong id="microSelectedType">-</strong>
+                </div>
+                <div class="telemetry-row">
+                  <span class="telemetry-key">Current speed</span>
+                  <strong id="microSelectedSpeed">-</strong>
+                </div>
+                <div class="telemetry-row">
+                  <span class="telemetry-key">Travel lane</span>
+                  <strong id="microSelectedLane">-</strong>
+                </div>
+                <div class="telemetry-row">
+                  <span class="telemetry-key">Space ahead</span>
+                  <strong id="microSelectedGap">-</strong>
+                </div>
+                <div class="telemetry-row">
+                  <span class="telemetry-key">Vehicle ahead</span>
+                  <strong id="microSelectedLeader">-</strong>
+                </div>
+                <div class="telemetry-row">
+                  <span class="telemetry-key">Road condition</span>
+                  <strong id="microSelectedStatus">-</strong>
+                </div>
+              </div>
+
+              <div class="speed-edit">
+                <label class="field-label" for="microSelectedSpeedCap">Set requested travel speed</label>
+                <div class="speed-edit-row">
+                  <select class="field-select" id="microSelectedSpeedCap" aria-label="Requested travel speed">
+                    <option value="20">20 km/h</option>
+                    <option value="30">30 km/h</option>
+                    <option value="40">40 km/h</option>
+                    <option value="50">50 km/h</option>
+                    <option value="60">60 km/h</option>
+                    <option value="70">70 km/h</option>
+                    <option value="80">80 km/h</option>
+                    <option value="90">90 km/h</option>
+                    <option value="100">100 km/h</option>
+                    <option value="110">110 km/h</option>
+                    <option value="120">120 km/h</option>
+                  </select>
+                  <button class="btn-sm btn-primary" id="microApplySpeedCap" type="button" disabled>Apply</button>
+                  <button class="btn-sm btn-quiet" id="microCancelSpeedCap" type="button" hidden>Cancel</button>
+                </div>
+                <div class="field-hint" id="microSpeedAvailability" aria-live="polite">Select a vehicle to see safe speed options.</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
+    </div>
+
+    <!-- ========================================================================
+         RIGHT PARAMETER INSPECTOR (320px)
+         ======================================================================== -->
+    <aside class="parameter-inspector">
+      <div class="inspector-scroll">
+
+        <!-- Readouts -->
+        <div class="inspector-section">
+          <div class="section-header">RUN TELEMETRY</div>
+          <div class="readout-grid">
+            <div class="readout-cell">
+              <span class="readout-label">Vehicles on road</span>
+              <strong class="readout-value mono" id="microVehicleCount">0</strong>
+            </div>
+            <div class="readout-cell">
+              <span class="readout-label">Mean speed</span>
+              <strong class="readout-value mono" id="microMeanSpeed">0 <small>km/h</small></strong>
+            </div>
+            <div class="readout-cell">
+              <span class="readout-label">Density</span>
+              <strong class="readout-value mono" id="microDensity">0 <small>veh/km/lane</small></strong>
+            </div>
+            <div class="readout-cell">
+              <span class="readout-label">Exited</span>
+              <strong class="readout-value mono" id="microExited">0</strong>
+            </div>
+            <div class="readout-cell">
+              <span class="readout-label">Queued</span>
+              <strong class="readout-value mono" id="microQueue">0</strong>
+            </div>
+            <div class="readout-cell">
+              <span class="readout-label">Overtakes</span>
+              <strong class="readout-value mono" id="microOvertakes">0</strong>
+            </div>
+            <div class="readout-cell">
+              <span class="readout-label">Lane changes</span>
+              <strong class="readout-value mono" id="microLaneChanges">0</strong>
+            </div>
+            <div class="readout-cell">
+              <span class="readout-label">Contacts prevented</span>
+              <strong class="readout-value mono" id="microContacts">0</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Vehicle Type Legend -->
+        <div class="inspector-section">
+          <div class="section-header">VEHICLE MIX</div>
+          <div class="legend-grid">
+            <label class="legend-item"><span class="swatch swatch-car"></span>Cars <strong id="carsCount">0</strong></label>
+            <label class="legend-item"><span class="swatch swatch-motorcycle"></span>Motorcycles <strong id="motorcyclesCount">0</strong></label>
+            <label class="legend-item"><span class="swatch swatch-rickshaw"></span>Auto-rickshaws <strong id="rickshawsCount">0</strong></label>
+            <label class="legend-item"><span class="swatch swatch-bus"></span>Buses <strong id="busesCount">0</strong></label>
+            <label class="legend-item"><span class="swatch swatch-truck"></span>Trucks <strong id="trucksCount">0</strong></label>
+          </div>
+        </div>
+
+        <!-- Simulation Event -->
+        <div class="inspector-section">
+          <div class="section-header">CURRENT EVENT</div>
+          <div class="event-readout" id="microEvent">Vehicles are ready. Press Play to watch them move and pass.</div>
+        </div>
 
       <div class="micro-event" id="microEvent" aria-live="polite">Vehicles are ready. Press Play to watch them move and pass.</div>
-      <p class="field-hint" id="microPlacementHint">Before you press Play, drag any vehicle to a new spot on the road. Spots that would overlap another vehicle are refused.</p>
-      <div class="risk-readout risk-readout-main">Risk index <strong id="microRiskIndex">0.0</strong><span id="microRiskBand">LOW</span></div>
-      <p class="risk-explanation" id="microRiskExplanation" aria-live="polite"></p>
-      <section class="flowline-editor" id="flowlineEditor" aria-label="Scenario editor">
-        <div class="editor-head">
-          <div>
-            <div class="section-kicker">FLOWLINE EDITOR</div>
-            <h2>Scenario workspace</h2>
-          </div>
-          <div class="editor-actions">
-            <button class="quiet-button" id="microEditorToggle" type="button" aria-pressed="false">Editor mode</button>
-            <button class="download-button" id="microScenarioSave" type="button">Save scenario</button>
-            <label class="download-button" for="microScenarioLoad">Load scenario</label>
-            <input id="microScenarioLoad" type="file" accept="application/json,.json" hidden>
+        <!-- Road Situation -->
+        <div class="inspector-section">
+          <div class="section-header">ROAD SITUATION</div>
+          <label class="field-label" for="microScenario">Scenario</label>
+          <select class="field-select" id="microScenario">
+            <option value="busy" selected>Normal traffic</option>
+            <option value="partial">One lane closed</option>
+            <option value="closure">Road fully closed</option>
+          </select>
+          <div class="field-hint" id="microScenarioHint">No barrier; vehicles use both lanes.</div>
+        </div>
+
+        <!-- Seed -->
+        <div class="inspector-section">
+          <div class="section-header">RUN SEED</div>
+          <label class="field-label" for="microSeed">Seed</label>
+          <input class="field-select" id="microSeed" type="number" min="0" max="4294967295" step="1" value="41">
+          <div class="field-hint">Use the same seed and settings to repeat a run.</div>
+        </div>
+        <!-- Conditional: Lane Setting -->
+        <div class="inspector-section conditional-setting" id="microLaneSetting">
+          <div class="section-header">LANE CLOSURE</div>
+          <label class="field-label" for="microClosedLane">Lane to close</label>
+          <select class="field-select" id="microClosedLane">
+            <option value="0">Lane 1</option>
+            <option value="1" selected>Lane 2</option>
+          </select>
+        </div>
+
+        <!-- Barrier Position -->
+        <div class="inspector-section">
+          <div class="section-header">BARRIER</div>
+          <label class="field-label" for="microBarrierPosition">Barrier distance from start (m)</label>
+          <input class="field-select" id="microBarrierPosition" type="number" min="50" max="450" step="1" value="320" aria-label="Barrier distance from start in metres">
+        </div>
+
+        <!-- Arrival Rate -->
+        <div class="inspector-section">
+          <div class="section-header">ARRIVALS</div>
+          <label class="field-label" for="microArrivalRate">Average arrivals</label>
+          <select class="field-select" id="microArrivalRate">
+            <option value="12">12 vehicles / minute</option>
+            <option value="24" selected>24 vehicles / minute</option>
+            <option value="36">36 vehicles / minute</option>
+          </select>
+          <label class="field-label variability-label" for="microVariation">Arrival variation <span id="microVariationValue">+/-25%</span></label>
+          <input class="variability-slider" id="microVariation" type="range" min="0" max="50" step="5" value="25" aria-label="Arrival variation">
+          <div class="field-hint">Changes the time between new vehicles.</div>
+        </div>
+        <!-- Speed Limit -->
+        <div class="inspector-section">
+          <div class="section-header">SPEED LIMIT</div>
+          <label class="field-label" for="microSpeedLimit">Limit</label>
+          <select class="field-select" id="microSpeedLimit">
+            <option value="40">40 km/h</option>
+            <option value="60" selected>60 km/h</option>
+            <option value="80">80 km/h</option>
+            <option value="100">100 km/h</option>
+          </select>
+        </div>
+
+        <!-- Duration -->
+        <div class="inspector-section">
+          <div class="section-header">DURATION</div>
+          <label class="field-label duration-label" for="microDuration">Maximum simulation time</label>
+          <select class="field-select" id="microDuration">
+            <option value="60">1 minute</option>
+            <option value="180" selected>3 minutes</option>
+            <option value="300">5 minutes</option>
+          </select>
+        </div>
+
+        <!-- Vehicle Import -->
+        <div class="inspector-section">
+          <div class="section-header">VEHICLE IMPORT</div>
+          <div class="vehicle-import">
+            <div class="field-label">Vehicles from file</div>
+            <label class="download-button" for="microVehicleImport">Add vehicles from JSON</label>
+            <input id="microVehicleImport" type="file" accept="application/json,.json" hidden>
+            <div class="field-hint">Before Play only. Each vehicle is checked; the rest of the file still loads. Reset or a setting change clears added vehicles.</div>
+            <div class="vehicle-import-report" id="microVehicleImportReport" role="status" hidden></div>
           </div>
         </div>
-        <div class="editor-body" id="microEditorBody" hidden>
-          <p class="field-hint">Edit the current scenario, save it as JSON, or load a previously saved scenario. The simulation state remains the single source of truth.</p>
+        <!-- Risk Index Configuration -->
+        <div class="inspector-section">
+          <div class="section-header">RISK INDEX</div>
+          <div class="risk-readout">
+            <span>Risk index</span>
+            <strong class="mono" id="microRiskIndex">0.0</strong>
+            <span id="microRiskBand">LOW</span>
+          </div>
+          <div class="field-hint" id="microRiskExplanation" aria-live="polite"></div>
           <div class="risk-config">
-            <div class="section-kicker">RISK INDEX CONFIGURATION</div>
             <div class="editor-grid">
               <label class="field-label" for="microRiskSpeedWeight">Speed weight <input class="field-select" id="microRiskSpeedWeight" type="number" min="0" max="1" step="0.05" value="0.35"></label>
               <label class="field-label" for="microRiskDensityWeight">Density weight <input class="field-select" id="microRiskDensityWeight" type="number" min="0" max="1" step="0.05" value="0.25"></label>
@@ -120,191 +347,153 @@
             </div>
           </div>
         </div>
-      </section>
-      <div class="micro-error-banner" id="microErrorBanner" role="alert" hidden></div>
-      <section class="crash-report" id="microCrashReport" aria-label="Crash report" hidden>
-        <div class="crash-report-head">
-          <div>
-            <div class="section-kicker">CRASH RECORD <span id="microCrashCount">0 EVENTS</span></div>
-            <h2>Collision observation</h2>
+        <!-- Editor -->
+        <div class="inspector-section">
+          <div class="section-header">SCENARIO EDITOR</div>
+          <div class="editor-actions">
+            <button class="btn-sm btn-quiet" id="microEditorToggle" type="button" aria-pressed="false">Editor mode</button>
+            <button class="btn-sm btn-download" id="microScenarioSave" type="button">Save scenario</button>
+            <label class="btn-sm btn-download" for="microScenarioLoad">Load scenario</label>
+            <input id="microScenarioLoad" type="file" accept="application/json,.json" hidden>
           </div>
-          <button class="download-button" id="microCrashExport" type="button">Export report</button>
-        </div>
-        <p class="crash-report-note">Report-only overlap observation. Traffic signals are not modeled.</p>
-        <div class="crash-report-summary" id="microCrashSummary"></div>
-        <div class="crash-report-table-wrap">
-          <table class="crash-report-table">
-            <thead><tr><th>Vehicle</th><th>Type</th><th>Speed</th><th>Lane</th><th>Position</th></tr></thead>
-            <tbody id="microCrashVehicles"></tbody>
-          </table>
-        </div>
-      </section>
-      <details class="vehicle-inspector" aria-label="Selected vehicle inspector" open>
-        <summary class="inspector-head">
-          <div>
-            <div class="section-kicker">VEHICLE INSPECTOR <span id="microSelectionCount">0 SELECTED</span></div>
-            <h2 id="microInspectorTitle">Select a vehicle on the road</h2>
-          </div>
-          <button class="quiet-button inspector-clear" id="microClearSelection" type="button" disabled>Clear</button>
-        </summary>
-        <p class="inspector-help" id="microInspectorHelp">Drag across the road to select one or more vehicles. Details are shown from each selected vehicle's forward view.</p>
-        <div class="inspector-empty" id="microInspectorEmpty">No vehicle selected.</div>
-        <div class="inspector-content" id="microInspectorContent" hidden>
-          <div class="vehicle-detail-grid">
-            <div class="telemetry-cell">
-              <span class="telemetry-label">Vehicle type <small>CLASS</small></span>
-              <strong id="microSelectedType">-</strong>
-              <svg class="telemetry-spark" viewBox="0 0 100 18" aria-hidden="true"><path d="M1 14 L18 13 L34 14 L50 9 L66 11 L82 5 L99 7"></path></svg>
-            </div>
-            <div class="telemetry-cell">
-              <span class="telemetry-label">Current speed <small>KM/H</small></span>
-              <strong id="microSelectedSpeed">-</strong>
-              <svg class="telemetry-spark" viewBox="0 0 100 18" aria-hidden="true"><path d="M1 14 L18 11 L34 12 L50 7 L66 9 L82 4 L99 5"></path></svg>
-            </div>
-            <div class="telemetry-cell">
-              <span class="telemetry-label">Travel lane <small>LANE INDEX</small></span>
-              <strong id="microSelectedLane">-</strong>
-              <svg class="telemetry-spark" viewBox="0 0 100 18" aria-hidden="true"><path d="M1 12 L30 12 L31 6 L63 6 L64 11 L99 11"></path></svg>
-            </div>
-            <div class="telemetry-cell">
-              <span class="telemetry-label">Space ahead <small>FORWARD GAP</small></span>
-              <strong id="microSelectedGap">-</strong>
-              <svg class="telemetry-spark" viewBox="0 0 100 18" aria-hidden="true"><path d="M1 5 L18 6 L34 8 L50 7 L66 11 L82 12 L99 15"></path></svg>
-            </div>
-            <div class="telemetry-cell">
-              <span class="telemetry-label">Vehicle ahead <small>LEADER</small></span>
-              <strong id="microSelectedLeader">-</strong>
-              <svg class="telemetry-spark" viewBox="0 0 100 18" aria-hidden="true"><path d="M1 13 L18 13 L35 10 L52 12 L69 8 L85 10 L99 6"></path></svg>
-            </div>
-            <div class="telemetry-cell">
-              <span class="telemetry-label">Road condition <small>STATUS</small></span>
-              <strong id="microSelectedStatus">-</strong>
-              <svg class="telemetry-spark" viewBox="0 0 100 18" aria-hidden="true"><path d="M1 11 L28 11 L38 5 L51 15 L62 9 L76 9 L99 9"></path></svg>
-            </div>
-          </div>
-          <div class="speed-edit">
-            <label class="field-label" for="microSelectedSpeedCap">Set requested travel speed</label>
-            <div class="speed-edit-row">
-              <select class="field-select" id="microSelectedSpeedCap" aria-label="Requested travel speed">
-                <option value="20">20 km/h</option>
-                <option value="30">30 km/h</option>
-                <option value="40">40 km/h</option>
-                <option value="50">50 km/h</option>
-                <option value="60">60 km/h</option>
-                <option value="70">70 km/h</option>
-                <option value="80">80 km/h</option>
-                <option value="90">90 km/h</option>
-                <option value="100">100 km/h</option>
-                <option value="110">110 km/h</option>
-                <option value="120">120 km/h</option>
-              </select>
-              <button class="primary-button" id="microApplySpeedCap" type="button" disabled>Apply speed</button>
-              <button class="quiet-button" id="microCancelSpeedCap" type="button" hidden>Cancel</button>
-            </div>
-            <div class="field-hint" id="microSpeedAvailability" aria-live="polite">Select a vehicle to see safe speed options.</div>
+          <div class="editor-body" id="microEditorBody" hidden>
+            <div class="field-hint">Edit the current scenario, save it as JSON, or load a previously saved scenario. The simulation state remains the single source of truth.</div>
           </div>
         </div>
-      </details>
-      <div class="micro-controls">
-        <button class="primary-button" id="microPlay" type="button"><span id="microPlayIcon" aria-hidden="true">&gt;</span><span id="microPlayText">Play</span></button>
-        <button class="quiet-button" id="microReset" type="button">Reset run</button>
-        <button class="quiet-button" id="microUndoPlacement" type="button" disabled title="Take back your last vehicle move (available before Play)">Undo move</button>
-        <button class="quiet-button" id="microRedoPlacement" type="button" disabled title="Put back a vehicle move you undid (available before Play)">Redo move</button>
-        <button class="quiet-button force-crash-button" id="microForceCrash" type="button" title="Demonstration only: moves two cars into each other so the collision record appears">Force a collision (demo)</button>
-        <label class="speed-control">Playback
-          <select id="microSpeed" aria-label="Playback speed">
-            <option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option>
-          </select>
-        </label>
-        <button class="download-button" id="microCsv" type="button"><span>Download CSV</span></button>
-        <button class="download-button" id="microJson" type="button"><span>Download JSON</span></button>
+
+        <!-- Transport Controls -->
+        <div class="inspector-section transport-section">
+          <div class="section-header">TRANSPORT</div>
+          <div class="transport-controls">
+            <button class="transport-btn transport-primary" id="microPlay" type="button"><span id="microPlayIcon" aria-hidden="true">▶</span><span id="microPlayText">Play</span></button>
+            <button class="transport-btn" id="microReset" type="button">Reset run</button>
+            <button class="transport-btn transport-quiet" id="microUndoPlacement" type="button" disabled title="Take back your last vehicle move (available before Play)">Undo move</button>
+            <button class="transport-btn transport-quiet" id="microRedoPlacement" type="button" disabled title="Put back a vehicle move you undid (available before Play)">Redo move</button>
+            <button class="transport-btn transport-danger" id="microForceCrash" type="button" title="Demonstration only: moves two cars into each other so the collision record appears">Force collision (demo)</button>
+          </div>
+          <label class="speed-control">
+            Playback
+            <select id="microSpeed" aria-label="Playback speed">
+              <option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option>
+            </select>
+          </label>
+          <div class="download-row">
+            <button class="btn-download" id="microCsv" type="button"><span>Download CSV</span></button>
+            <button class="btn-download" id="microJson" type="button"><span>Download JSON</span></button>
+          </div>
+        </div>
+
+        <!-- Error Banner -->
+        <div class="micro-error-banner" id="microErrorBanner" role="alert" hidden></div>
+
+        <!-- Placement Hint -->
+        <p class="field-hint" id="microPlacementHint">Before you press Play, drag any vehicle to a new spot on the road. Spots that would overlap another vehicle are refused.</p>
+
+        <!-- Distance markers -->
+        <div class="micro-distance">
+          <span>0 m <small>UPSTREAM</small></span>
+          <span>500 m <small>DOWNSTREAM</small></span>
+        </div>
+
+        <!-- Timeline -->
+        <div class="inspector-section timeline-section">
+          <div class="section-header">RUN HISTORY</div>
+          <div class="timeline-row">
+            <span class="timeline-label"><span id="microTimelineTime">00:00</span></span>
+            <input id="microTimeline" type="range" min="0" max="0" value="0" step="1" aria-label="Simulation history">
+          </div>
+          <div class="timeline-markers" id="microTimelineMarkers" aria-label="Run events">
+            <button type="button" class="timeline-marker marker-conflict" data-event="conflict" aria-label="First conflict" hidden>CONFLICT</button>
+            <button type="button" class="timeline-marker marker-braking" data-event="braking" aria-label="First braking event" hidden>BRAKING</button>
+            <button type="button" class="timeline-marker marker-crash" data-event="crash" aria-label="Crash detected" hidden disabled>CRASH</button>
+          </div>
+        </div>
+
+        <!-- Crash Report -->
+        <section class="crash-report" id="microCrashReport" aria-label="Crash report" hidden>
+          <div class="crash-report-head">
+            <div>
+              <div class="section-kicker">CRASH RECORD <span id="microCrashCountBadge">0 EVENTS</span></div>
+              <h2>Collision observation</h2>
+            </div>
+            <button class="btn-download" id="microCrashExport" type="button">Export report</button>
+          </div>
+          <p class="crash-report-note">Report-only overlap observation. Traffic signals are not modeled.</p>
+          <div class="crash-report-summary" id="microCrashSummary"></div>
+          <div class="crash-report-table-wrap">
+            <table class="crash-report-table">
+              <thead><tr><th>Vehicle</th><th>Type</th><th>Speed</th><th>Lane</th><th>Position</th></tr></thead>
+              <tbody id="microCrashVehicles"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Vehicle Inspector (detail panel) -->
+        <details class="vehicle-inspector-detail" aria-label="Selected vehicle inspector" open>
+          <summary class="inspector-head">
+            <div>
+              <div class="section-kicker">VEHICLE INSPECTOR <span id="microSelectionCountBadge">0 SELECTED</span></div>
+              <h2 id="microInspectorTitle">Select a vehicle on the road</h2>
+            </div>
+            <button class="btn-sm btn-quiet inspector-clear" id="microClearSelection" type="button" disabled>Clear</button>
+          </summary>
+          <p class="inspector-help" id="microInspectorHelp">Drag across the road to select one or more vehicles. Details are shown from each selected vehicle's forward view.</p>
+          <div class="inspector-empty" id="microInspectorEmptyDetail">No vehicle selected.</div>
+          <div class="inspector-content" id="microInspectorContentDetail" hidden>
+            <div class="vehicle-detail-grid">
+              <div class="telemetry-cell">
+                <span class="telemetry-label">Vehicle type <small>CLASS</small></span>
+                <strong id="microSelectedTypeDetail">-</strong>
+              </div>
+              <div class="telemetry-cell">
+                <span class="telemetry-label">Current speed <small>KM/H</small></span>
+                <strong id="microSelectedSpeedDetail">-</strong>
+              </div>
+              <div class="telemetry-cell">
+                <span class="telemetry-label">Travel lane <small>LANE INDEX</small></span>
+                <strong id="microSelectedLaneDetail">-</strong>
+              </div>
+              <div class="telemetry-cell">
+                <span class="telemetry-label">Space ahead <small>FORWARD GAP</small></span>
+                <strong id="microSelectedGapDetail">-</strong>
+              </div>
+              <div class="telemetry-cell">
+                <span class="telemetry-label">Vehicle ahead <small>LEADER</small></span>
+                <strong id="microSelectedLeaderDetail">-</strong>
+              </div>
+              <div class="telemetry-cell">
+                <span class="telemetry-label">Road condition <small>STATUS</small></span>
+                <strong id="microSelectedStatusDetail">-</strong>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <!-- Physics Details -->
+        <details class="physics-details">
+          <summary>How this model works</summary>
+          <p>Each car, motorcycle, auto-rickshaw, bus, and truck is simulated separately. Each physical lane has four marked paths for choosing where to travel; vehicles still need enough room for their actual width and length, so a marked path is not a promise that a vehicle can fit beside another one. Moves between paths take about 2.4 seconds and are checked for a clear route. Every vehicle follows the same snapshot of traffic each step, then advances. A leader never brakes, changes lane, or moves backward just to make room for a follower; only a vehicle behind slower traffic can request a pass. Drivers brake for traffic ahead and keep a gap when they can. They look at least 220 m ahead for a lane closure and merge sooner when front and rear gaps are safe; they wait rather than force an unsafe merge. A driver must be closing on slower traffic to pass and waits before returning to the old lane.</p>
+          <p>A lane closure acts as a stopped obstacle in that lane. A full closure blocks both lanes. Vehicles slow down and queue; lane changes can move them around a single-lane restriction when there is room.</p>
+          <p>Drag the barrier marker directly on the animated road, or edit its distance. Moving it does not reset the run; vehicles already past it keep moving. Vehicles accelerate normally when the barrier is well ahead, then brake within a safe stopping distance. Vehicle lengths keep the road scale, with clearer, larger shapes that do not shrink when traffic gets close.</p>
+          <p>Readouts include mean speed in km/h, density in vehicles per kilometre per lane, exiting and queued vehicle counts, overtakes, and lane changes. Contact prevention is reported separately from barrier queues.</p>
+          <p>Vehicles reaching the 500 m downstream end are counted as exited and do not stop the simulation. The run stops at its selected time, or when congestion keeps new vehicles from entering at the 0 m upstream end.</p>
+          <p>These are simplified, uncalibrated driving rules. Results are for exploration, not road-safety or engineering decisions.</p>
+        </details>
+
       </div>
-    </section>
-
-    <aside class="micro-notes" aria-label="Simulation settings and model information">
-      <div class="section-kicker">SIMULATION SETTINGS</div>
-      <h2>Set the road conditions</h2>
-      <p class="settings-intro">Most settings reset the run. Barrier distance can move live.</p>
-
-      <label class="field-label" for="microScenario">Road situation</label>
-      <select class="field-select" id="microScenario">
-        <option value="busy" selected>Normal traffic</option>
-        <option value="partial">One lane closed</option>
-        <option value="closure">Road fully closed</option>
-      </select>
-      <div class="field-hint" id="microScenarioHint">No barrier; vehicles use both lanes.</div>
-
-      <label class="field-label" for="microSeed">Run seed</label>
-      <input class="field-select" id="microSeed" type="number" min="0" max="4294967295" step="1" value="41">
-      <div class="field-hint">Use the same seed and settings to repeat a run.</div>
-
-      <div class="conditional-setting" id="microLaneSetting">
-        <label class="field-label" for="microClosedLane">Lane to close</label>
-        <select class="field-select" id="microClosedLane">
-          <option value="0">Lane 1</option>
-          <option value="1" selected>Lane 2</option>
-        </select>
-      </div>
-
-      <label class="field-label" for="microBarrierPosition">Barrier distance from start (m)</label>
-      <input class="field-select" id="microBarrierPosition" type="number" min="50" max="450" step="1" value="320" aria-label="Barrier distance from start in metres">
-
-      <label class="field-label" for="microArrivalRate">Average arrivals</label>
-      <select class="field-select" id="microArrivalRate">
-        <option value="12">12 vehicles / minute</option>
-        <option value="24" selected>24 vehicles / minute</option>
-        <option value="36">36 vehicles / minute</option>
-      </select>
-
-      <label class="field-label variability-label" for="microVariation">Arrival variation <span id="microVariationValue">+/-25%</span></label>
-      <input class="variability-slider" id="microVariation" type="range" min="0" max="50" step="5" value="25" aria-label="Arrival variation">
-      <div class="field-hint">Changes the time between new vehicles.</div>
-
-      <label class="field-label" for="microSpeedLimit">Speed limit</label>
-      <select class="field-select" id="microSpeedLimit">
-        <option value="40">40 km/h</option>
-        <option value="60" selected>60 km/h</option>
-        <option value="80">80 km/h</option>
-        <option value="100">100 km/h</option>
-      </select>
-
-      <label class="field-label duration-label" for="microDuration">Maximum simulation time</label>
-      <select class="field-select" id="microDuration">
-        <option value="60">1 minute</option>
-        <option value="180" selected>3 minutes</option>
-        <option value="300">5 minutes</option>
-      </select>
-
-      <div class="vehicle-import">
-        <div class="field-label">Vehicles from file</div>
-        <label class="download-button" for="microVehicleImport">Add vehicles from JSON</label>
-        <input id="microVehicleImport" type="file" accept="application/json,.json" hidden>
-        <div class="field-hint">Before Play only. Each vehicle is checked; the rest of the file still loads. Reset or a setting change clears added vehicles.</div>
-        <div class="vehicle-import-report" id="microVehicleImportReport" role="status" hidden></div>
-      </div>
-
-      <details class="physics-details">
-        <summary>How this model works</summary>
-        <p>Each car, motorcycle, auto-rickshaw, bus, and truck is simulated separately. Each physical lane has four marked paths for choosing where to travel; vehicles still need enough room for their actual width and length, so a marked path is not a promise that a vehicle can fit beside another one. Moves between paths take about 2.4 seconds and are checked for a clear route. Every vehicle follows the same snapshot of traffic each step, then advances. A leader never brakes, changes lane, or moves backward just to make room for a follower; only a vehicle behind slower traffic can request a pass. Drivers brake for traffic ahead and keep a gap when they can. They look at least 220 m ahead for a lane closure and merge sooner when front and rear gaps are safe; they wait rather than force an unsafe merge. A driver must be closing on slower traffic to pass and waits before returning to the old lane.</p>
-        <p>A lane closure acts as a stopped obstacle in that lane. A full closure blocks both lanes. Vehicles slow down and queue; lane changes can move them around a single-lane restriction when there is room.</p>
-        <p>Drag the barrier marker directly on the animated road, or edit its distance. Moving it does not reset the run; vehicles already past it keep moving. Vehicles accelerate normally when the barrier is well ahead, then brake within a safe stopping distance. Vehicle lengths keep the road scale, with clearer, larger shapes that do not shrink when traffic gets close.</p>
-        <p>Readouts include mean speed in km/h, density in vehicles per kilometre per lane, exiting and queued vehicle counts, overtakes, and lane changes. Contact prevention is reported separately from barrier queues.</p>
-        <p>Vehicles reaching the 500 m downstream end are counted as exited and do not stop the simulation. The run stops at its selected time, or when congestion keeps new vehicles from entering at the 0 m upstream end.</p>
-        <p>These are simplified, uncalibrated driving rules. Results are for exploration, not road-safety or engineering decisions.</p>
-      </details>
     </aside>
+  </div>
 
-    <footer class="footnote">
-      <span><i class="foot-dot"></i> Runs locally in your browser.</span>
-      <span>Educational use only. Uncalibrated. Not for engineering decisions.</span>
-      <span class="app-version">Flowline v0.1.0</span>
-      <nav aria-label="Legal information">
-        <a href="../DISCLAIMER.md">Disclaimer</a>
-        <a href="../PRIVACY.md">Privacy</a>
-        <a href="../TERMS.md">Terms</a>
-        <a href="../THIRD_PARTY_NOTICES.md">Third-party notices</a>
-      </nav>
-    </footer>
-  </main>
+  <footer class="footnote">
+    <span><i class="foot-dot"></i> Runs locally in your browser.</span>
+    <span>Educational use only. Uncalibrated. Not for engineering decisions.</span>
+    <span class="app-version">Flowline v0.1.0</span>
+    <nav aria-label="Legal information">
+      <a href="../DISCLAIMER.md">Disclaimer</a>
+      <a href="../PRIVACY.md">Privacy</a>
+      <a href="../TERMS.md">Terms</a>
+      <a href="../THIRD_PARTY_NOTICES.md">Third-party notices</a>
+    </nav>
+  </footer>
 </body>
 </html>
