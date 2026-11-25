@@ -1,4 +1,4 @@
-(() => {
+﻿(() => {
   'use strict';
 
   const APP_VERSION = '0.1.0';
@@ -118,6 +118,7 @@
     if (Math.floor(state.time) > Math.floor(state.time - STEP)) recordFrame();
   }
   let state;
+  window.__flowlineState = null;
   let running = false;
   let rafId = 0;
   let previousTime = 0;
@@ -884,7 +885,7 @@
       )
     );
     ui.status.textContent = statusText;
-    if (ui.playIcon) ui.playIcon.textContent = running ? '⏸' : '▶';
+    if (ui.playIcon) ui.playIcon.textContent = running ? 'â¸' : 'â–¶';
     if (ui.playText) ui.playText.textContent = running ? 'Pause' : viewFrameIndex !== null ? 'Replay' : (state.endReached || state.time >= Number(ui.duration.value) ? 'Run' : (state.time ? 'Resume' : 'Run'));
     const badge = $('microStatusBadge');
     if (badge) badge.className = 'status-badge' + (running ? ' is-running' : viewFrameIndex !== null ? ' is-history' : (!running && (state.endReached || state.time >= Number(ui.duration.value))) ? ' is-complete' : '');
@@ -994,7 +995,7 @@
   function reset() {
     if (!settingsAreValid()) return false;
     if (rafId) window.cancelAnimationFrame(rafId);
-    state = createState();
+    state = createState(); window.__flowlineState = state;
     state.settings = getSettings();
     if (errorBanner) errorBanner.hidden = true;
     ui.vehicleImportReport.hidden = true;
@@ -1566,5 +1567,7 @@
   updateScenarioControls();
   reset();
 })();
+
+
 
 

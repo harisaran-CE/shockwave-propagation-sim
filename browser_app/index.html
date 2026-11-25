@@ -3,128 +3,34 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#F4F5F7">
+  <meta name="theme-color" content="#050505">
   <meta name="description" content="Flowline vehicle traffic simulation workstation.">
-  <title>Flowline - Vehicle Traffic Studio</title>
+  <title>Flowline - Vehicle Traffic OS</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="microscopic.css">
-  <link rel="stylesheet" href="landing.css">
   <script src="flowline-sim.js" defer></script>
   <script src="microscopic.js" defer></script>
   <script type="module" src="flowline-3d.js"></script>
-  <script src="landing.js" defer></script>
+  <script src="os-shell.js" defer></script>
 </head>
-<body>
-  <div class="landing-shell" id="flowlineLanding" aria-label="Flowline entry interface">
-    <div class="landing-grid-bg" aria-hidden="true"></div>
-    <canvas class="landing-plume" id="landingPlume" aria-hidden="true"></canvas>
-
-    <header class="landing-topbar">
-      <div class="landing-brand">
-        <span class="landing-mark" aria-hidden="true">FL</span>
-        <div>
-          <div class="landing-wordmark">FLOWLINE</div>
-          <div class="landing-sub mono">TRAFFIC SIMULATION WORKSTATION</div>
-        </div>
-      </div>
-      <div class="landing-topstatus mono" id="landingClock">SYS READY</div>
-      <button class="landing-enter-btn" id="landingEnter" type="button"><span>ENTER WORKSTATION</span><span aria-hidden="true">↗</span></button>
-    </header>
-
-    <main class="landing-main">
-      <section class="landing-hero landing-cell">
-        <div class="landing-cell-head mono"><span>[01] / ENTRY</span><span>SHOCKWAVE PROPAGATION SIM</span></div>
-        <p class="landing-eyebrow mono">DETERMINISTIC · MICROSCOPIC · 2D/3D</p>
-        <h1 class="landing-title">A TACTILE OPERATING SURFACE<br>FOR TRAFFIC FLOW.</h1>
-        <p class="landing-lede">Flowline models individual vehicles, lane closures, queue formation, and collision-risk telemetry on a controlled corridor. Inspect behavior frame-by-frame, export runs, and move from scenario setup to 3D perspective without leaving the workstation.</p>
-        <div class="landing-actions">
-          <button class="landing-action primary" id="landingLaunch" type="button">Launch simulation</button>
-          <a class="landing-action" href="#landing-modules">Inspect modules</a>
-        </div>
-        <div class="landing-hero-meta mono">
-          <span>500 M CORRIDOR</span><span>SEEDED RNG</span><span>CSV / JSON EXPORT</span>
-        </div>
-      </section>
-
-      <section class="landing-cell landing-diagnostics" aria-label="System diagnostics">
-        <div class="landing-cell-head mono"><span>[02] / DIAGNOSTICS</span><span id="landingDiagState">IDLE</span></div>
-        <div class="diag-grid">
-          <div class="diag-item"><span class="diag-k mono">ENGINE</span><strong class="diag-v">FlowlineSim</strong><span class="diag-s mono">individual-vehicle model</span></div>
-          <div class="diag-item"><span class="diag-k mono">TIME STEP</span><strong class="diag-v mono">0.025 s</strong><span class="diag-s mono">fixed simulation dt</span></div>
-          <div class="diag-item"><span class="diag-k mono">VIEWPORTS</span><strong class="diag-v">2D + 3D</strong><span class="diag-s mono">synchronized frame state</span></div>
-          <div class="diag-item"><span class="diag-k mono">OUTPUT</span><strong class="diag-v">Telemetry</strong><span class="diag-s mono">collisions / risk / history</span></div>
-        </div>
-        <div class="diag-terminal mono" aria-label="Boot log">
-          <div class="diag-line"><span class="diag-prompt">flowline@corridor:~$</span> load scenario --seed 41</div>
-          <div class="diag-line muted">ready: 10 vehicles · 2 lanes · 500m</div>
-          <div class="diag-line"><span class="diag-prompt">flowline@corridor:~$</span> arm telemetry --collisions --risk</div>
-          <div class="diag-line muted">export channels: csv, json, scenario</div>
-        </div>
-      </section>
-
-      <section class="landing-cell landing-modules" id="landing-modules" aria-label="Modules">
-        <div class="landing-cell-head mono"><span>[03] / MODULES</span><span>CAPABILITIES</span></div>
-        <div class="module-grid">
-          <article class="module-card"><span class="module-idx mono">M-01</span><h2>Scenario Control</h2><p>Configure arrivals, speed limit, lane closures, barrier position, seed, and duration before each run.</p></article>
-          <article class="module-card"><span class="module-idx mono">M-02</span><h2>Kinematic Schematic</h2><p>Track vehicle positions, lane changes, gaps, and selection telemetry in the 2D corridor view.</p></article>
-          <article class="module-card"><span class="module-idx mono">M-03</span><h2>3D Perspective</h2><p>Inspect the same simulation state through chase, orbit, top, and cinematic camera modes.</p></article>
-          <article class="module-card"><span class="module-idx mono">M-04</span><h2>Collision Log</h2><p>Record impact time, vehicle identity, impact speed, stopping distance, severity, and export CSV.</p></article>
-        </div>
-      </section>
-
-      <section class="landing-cell landing-mix" aria-label="Vehicle mix">
-        <div class="landing-cell-head mono"><span>[04] / FLEET</span><span>HETEROGENEOUS MIX</span></div>
-        <div class="mix-grid">
-          <div class="mix-card"><span class="mix-name">Car</span><span class="mix-meta mono">45% · 1.0 PCU</span></div>
-          <div class="mix-card"><span class="mix-name">Motorcycle</span><span class="mix-meta mono">24% · 0.5 PCU</span></div>
-          <div class="mix-card"><span class="mix-name">Auto-rickshaw</span><span class="mix-meta mono">13% · 0.8 PCU</span></div>
-          <div class="mix-card"><span class="mix-name">Bus</span><span class="mix-meta mono">8% · 3.0 PCU</span></div>
-          <div class="mix-card"><span class="mix-name">Truck</span><span class="mix-meta mono">10% · 3.5 PCU</span></div>
-        </div>
-      </section>
-
-      <section class="landing-cell landing-lab" aria-label="Lab workflow">
-        <div class="landing-cell-head mono"><span>[05] / LAB</span><span>RUN WORKFLOW</span></div>
-        <ol class="lab-steps">
-          <li><span class="lab-n mono">01</span><div><strong>Set scenario</strong><p>Choose road situation, seed, arrivals, speed limit, and barrier.</p></div></li>
-          <li><span class="lab-n mono">02</span><div><strong>Run / step</strong><p>Execute continuously or advance frame-by-frame for inspection.</p></div></li>
-          <li><span class="lab-n mono">03</span><div><strong>Audit telemetry</strong><p>Inspect selected vehicle, risk, collision records, and timeline markers.</p></div></li>
-          <li><span class="lab-n mono">04</span><div><strong>Export evidence</strong><p>Save scenario JSON, run JSON, or collision CSV for review.</p></div></li>
-        </ol>
-      </section>
-
-      <section class="landing-cell landing-contact" aria-label="Entry">
-        <div class="landing-cell-head mono"><span>[06] / TERMINAL</span><span>SESSION ENTRY</span></div>
-        <div class="contact-terminal mono">
-          <div><span class="diag-prompt">flowline@local:~$</span> open workstation --mode split</div>
-          <div class="muted">preserving simulation state, hooks, and deterministic behavior</div>
-          <div><span class="diag-prompt">flowline@local:~$</span> <span class="landing-caret" aria-hidden="true">_</span></div>
-        </div>
-        <button class="landing-action primary landing-enter-wide" id="landingEnterBottom" type="button">Enter Flowline Workstation</button>
-      </section>
-    </main>
-
-    <nav class="landing-dock mono" aria-label="Landing dock">
-      <a href="#landing-modules">Modules</a>
-      <a href="#top" data-landing-top>Top</a>
-      <button type="button" id="landingDockEnter">Enter</button>
-    </nav>
-  </div>
-
-  <div class="app-shell" id="flowlineApp" hidden>
-    <header class="topbar" role="banner">
-      <div class="topbar-left">
+<body class="workstation-active">
+  <div class="app-shell os-shell" id="flowlineApp">
+    <header class="topbar os-topbar" role="banner">
+      <div class="topbar-left os-brand-cell">
         <div class="brand" aria-label="Flowline vehicle traffic studio">
           <span class="brand-mark" aria-hidden="true">FL</span>
-          <span class="brand-name">Flowline</span>
+          <div class="brand-stack">
+            <span class="brand-name">FLOWLINE OS</span>
+            <span class="brand-sub mono">SHOCKWAVE / CORRIDOR SIM</span>
+          </div>
         </div>
         <span class="status-badge" id="microStatusBadge"><span class="status-dot" id="microStatusDot"></span><span id="microStatus">READY</span></span>
       </div>
-      <div class="topbar-center">
+      <div class="topbar-center os-transport-cell">
         <div class="clock-readout" aria-label="Simulated time">
           <span class="clock-label">SIM TIME</span>
           <strong id="microTime" class="mono">00:00.00</strong><span class="clock-unit">s</span>
@@ -142,33 +48,32 @@
           <button class="btn btn-secondary" id="microReset" type="button">Reset</button>
         </div>
       </div>
-      <div class="topbar-right">
+      <div class="topbar-right os-view-cell">
+        <div class="os-readout mono" id="osFpsReadout">FPS --</div>
         <div class="segmented" role="group" aria-label="Viewport mode">
-          <button class="seg-btn is-active" id="microViewSplit" type="button" data-view="split" aria-pressed="true">Split 2D + 3D</button>
-          <button class="seg-btn" id="microView3d" type="button" data-view="3d" aria-pressed="false">3D Viewport</button>
-          <button class="seg-btn" id="microView2d" type="button" data-view="2d" aria-pressed="false">2D Schematic</button>
+          <button class="seg-btn is-active" id="microViewSplit" type="button" data-view="split" aria-pressed="true">Split 2D+3D</button>
+          <button class="seg-btn" id="microView3d" type="button" data-view="3d" aria-pressed="false">3D</button>
+          <button class="seg-btn" id="microView2d" type="button" data-view="2d" aria-pressed="false">2D</button>
         </div>
       </div>
     </header>
 
-    <div class="workspace">
-      <main class="main-stage">
-        <div class="viewport-upper" id="viewportUpper">
-          <section class="viewport-panel vp-2d" id="panel2d" aria-label="2D kinematic schematic">
-            <div class="vp-overlay-head">
-              <span class="vp-title">2D KINEMATIC SCHEMATIC</span>
-              <div class="vp-controls">
-                <span class="vp-meta mono">500 m corridor</span>
-              </div>
+    <div class="workspace os-grid">
+      <main class="main-stage os-main">
+        <div class="viewport-upper os-viewport" id="viewportUpper">
+          <section class="viewport-panel vp-2d os-cell" id="panel2d" aria-label="2D kinematic schematic">
+            <div class="vp-overlay-head cell-head">
+              <span class="vp-title">[A] 2D KINEMATIC SCHEMATIC</span>
+              <div class="vp-controls"><span class="vp-meta mono">500M CORRIDOR / PAN+ZOOM CANVAS</span></div>
             </div>
             <div class="micro-road-wrap canvas-wrap" id="microRoadWrap">
               <canvas id="microRoad" role="img" aria-label="Two-dimensional traffic schematic."></canvas>
             </div>
           </section>
           <div class="viewport-divider" id="viewportDivider"></div>
-          <section class="viewport-panel vp-3d" id="panel3d" aria-label="3D perspective view">
-            <div class="vp-overlay-head">
-              <span class="vp-title">3D PERSPECTIVE VIEW</span>
+          <section class="viewport-panel vp-3d os-cell" id="panel3d" aria-label="3D perspective view">
+            <div class="vp-overlay-head cell-head">
+              <span class="vp-title">[B] 3D PERSPECTIVE VIEW</span>
               <div class="vp-controls">
                 <div class="segmented segmented-sm scene-3d-controls" role="group" aria-label="3D camera mode">
                   <button class="seg-btn is-active" type="button" data-3d-mode="chase" aria-pressed="true">Chase</button>
@@ -187,10 +92,10 @@
           </section>
         </div>
 
-        <div class="telemetry-dock">
-          <section class="dock-panel" aria-label="Collision observation log">
-            <div class="panel-head">
-              <div class="panel-head-left"><span class="panel-title">COLLISION OBSERVATION LOG</span><span class="count-badge mono" id="microCrashCount">0</span></div>
+        <div class="telemetry-dock os-bottom">
+          <section class="dock-panel os-cell" aria-label="Collision observation log">
+            <div class="panel-head cell-head">
+              <div class="panel-head-left"><span class="panel-title">[C] COLLISION / EVENT LOG</span><span class="count-badge mono" id="microCrashCount">0</span></div>
               <div class="panel-head-right">
                 <button class="btn btn-ghost-sm" id="microCrashExport" type="button">Export CSV</button>
                 <button class="btn btn-ghost-sm" id="microCrashClear" type="button">Clear</button>
@@ -202,18 +107,16 @@
                 <tbody id="microCrashVehicles"></tbody>
               </table>
               <div class="empty-row" id="microCrashEmpty">No collision events recorded in current run</div>
-              <div id="microCrashReport" hidden>
-                <div id="microCrashSummary" class="sr-only"></div>
-              </div>
+              <div id="microCrashReport" hidden><div id="microCrashSummary" class="sr-only"></div></div>
             </div>
           </section>
           <div class="dock-divider"></div>
-          <section class="dock-panel" aria-label="Selected vehicle telemetry">
-            <div class="panel-head">
-              <div class="panel-head-left"><span class="panel-title">SELECTED VEHICLE TELEMETRY</span><span class="count-badge mono" id="microSelectionCount">0 SELECTED</span></div>
+          <section class="dock-panel os-cell" aria-label="Selected vehicle telemetry">
+            <div class="panel-head cell-head">
+              <div class="panel-head-left"><span class="panel-title">[D] SELECTED VEHICLE / TERMINAL</span><span class="count-badge mono" id="microSelectionCount">0 SELECTED</span></div>
               <div class="panel-head-right"><button class="btn btn-ghost-sm" id="microClearSelection" type="button" disabled>Clear</button></div>
             </div>
-            <div class="panel-body inspector-body">
+            <div class="panel-body inspector-body os-inspector-terminal">
               <div class="inspector-empty" id="microInspectorEmpty">No vehicle selected. Click a vehicle in 2D/3D or drag to select.</div>
               <div class="inspector-content" id="microInspectorContent" hidden>
                 <div class="kv-grid">
@@ -237,15 +140,23 @@
                 </div>
                 <div class="field-hint" id="microSpeedAvailability">Select a vehicle to see safe speed options.</div>
               </div>
+              <div class="os-terminal" aria-label="Command terminal">
+                <div class="os-terminal-log mono" id="osTerminalLog" aria-live="polite"></div>
+                <div class="os-terminal-row">
+                  <span class="os-terminal-prompt mono">flowline$</span>
+                  <input class="os-terminal-input mono" id="osTerminalInput" type="text" spellcheck="false" autocomplete="off" placeholder="run | pause | step | reset | seed 41 | spawn truck | view 3d | clearlog">
+                  <button class="btn btn-ghost-sm" id="osTerminalRun" type="button">EXEC</button>
+                </div>
+              </div>
             </div>
           </section>
         </div>
       </main>
 
-      <aside class="inspector-right" aria-label="Parameter inspector">
+      <aside class="inspector-right os-sidebar" aria-label="Parameter inspector">
         <div class="inspector-scroll">
-          <section class="insp-section">
-            <div class="insp-head">SIMULATION CONTROLS</div>
+          <section class="insp-section os-cell">
+            <div class="insp-head">[E] SCENARIO / FLEET CONTROL</div>
             <label class="field-label" for="microScenario">Road situation</label>
             <select class="field-select" id="microScenario">
               <option value="busy" selected>Normal traffic</option>
@@ -253,7 +164,6 @@
               <option value="closure">Road fully closed</option>
             </select>
             <div class="field-hint" id="microScenarioHint">No barrier; vehicles use both lanes.</div>
-
             <div class="field-row">
               <label class="field-label" for="microSeed">Run seed</label>
               <input class="field-input mono" id="microSeed" type="number" min="0" max="4294967295" step="1" value="41">
@@ -280,10 +190,15 @@
             <select class="field-select" id="microDuration">
               <option value="60">1 minute</option><option value="180" selected>3 minutes</option><option value="300">5 minutes</option>
             </select>
+            <div class="os-preset-row">
+              <button class="btn btn-ghost-sm" type="button" data-seed-preset="41">Seed 41</button>
+              <button class="btn btn-ghost-sm" type="button" data-seed-preset="7">Seed 7</button>
+              <button class="btn btn-ghost-sm" type="button" data-seed-preset="101">Seed 101</button>
+            </div>
           </section>
 
-          <section class="insp-section">
-            <div class="insp-head">LIVE TELEMETRY</div>
+          <section class="insp-section os-cell">
+            <div class="insp-head">[F] LIVE TELEMETRY / DIAGNOSTICS</div>
             <div class="telemetry-kv">
               <div class="tkv"><span>Vehicles on road</span><strong class="mono" id="microVehicleCount">0</strong></div>
               <div class="tkv"><span>Mean speed</span><strong class="mono" id="microMeanSpeed">0 <small>km/h</small></strong></div>
@@ -293,6 +208,12 @@
               <div class="tkv"><span>Overtakes</span><strong class="mono" id="microOvertakes">0</strong></div>
               <div class="tkv"><span>Lane changes</span><strong class="mono" id="microLaneChanges">0</strong></div>
               <div class="tkv"><span>Contacts prevented</span><strong class="mono" id="microContacts">0</strong></div>
+            </div>
+            <div class="os-extra-metrics mono">
+              <div><span>FPS</span><strong id="osMetricFps">--</strong></div>
+              <div><span>THROUGHPUT</span><strong id="osMetricThroughput">0 veh/min</strong></div>
+              <div><span>PCU LOAD</span><strong id="osMetricPcu">0</strong></div>
+              <div><span>NEAR-MISS/CONFLICTS</span><strong id="osMetricConflicts">0</strong></div>
             </div>
             <div class="vehicle-mix">
               <span class="mix-item"><i class="swatch car"></i>Cars <b class="mono" id="carsCount">0</b></span>
@@ -304,8 +225,8 @@
             <div class="event-readout" id="microEvent" aria-live="polite">Vehicles are ready. Press Run to start.</div>
           </section>
 
-          <section class="insp-section">
-            <div class="insp-head">RISK & SCENARIO</div>
+          <section class="insp-section os-cell">
+            <div class="insp-head">[G] RISK / EXPORT</div>
             <div class="risk-row">Risk index <strong class="mono" id="microRiskIndex">0.0</strong> <span class="risk-band" id="microRiskBand">LOW</span></div>
             <p class="risk-explanation" id="microRiskExplanation" aria-live="polite"></p>
             <div class="field-grid-2">
@@ -330,8 +251,8 @@
             <div id="microErrorBanner" class="error-banner" role="alert" hidden></div>
           </section>
 
-          <section class="insp-section">
-            <div class="insp-head">RUN HISTORY</div>
+          <section class="insp-section os-cell">
+            <div class="insp-head">[H] RUN HISTORY</div>
             <div class="timeline-row">
               <span class="mono muted" id="microTimelineTime">00:00</span>
               <input id="microTimeline" class="field-range" type="range" min="0" max="0" value="0" step="1" aria-label="Simulation history">
@@ -343,13 +264,11 @@
             </div>
           </section>
 
-          <details class="insp-section insp-details">
-            <summary class="insp-head">SCENARIO EDITOR / MODEL</summary>
+          <details class="insp-section insp-details os-cell">
+            <summary class="insp-head">[I] SCENARIO EDITOR / MODEL</summary>
             <div class="insp-details-body">
               <button class="btn btn-secondary btn-sm" id="microEditorToggle" type="button" aria-pressed="false">Editor mode</button>
-              <div id="microEditorBody" hidden>
-                <p class="field-hint">Edit scenario, save/load JSON. Simulation state remains source of truth.</p>
-              </div>
+              <div id="microEditorBody" hidden><p class="field-hint">Edit scenario, save/load JSON. Simulation state remains source of truth.</p></div>
               <p class="field-hint" id="microPlacementHint">Before Run, drag vehicles to reposition. Unsafe overlaps are refused.</p>
               <p class="field-hint">Simplified, uncalibrated model. Educational use only; not for engineering decisions.</p>
             </div>
@@ -357,6 +276,15 @@
         </div>
       </aside>
     </div>
+
+    <nav class="os-dock" aria-label="Workspace dock">
+      <button class="os-dock-btn" id="osDockRun" type="button">RUN/PAUSE</button>
+      <button class="os-dock-btn" id="osDockStep" type="button">STEP</button>
+      <button class="os-dock-btn" id="osDockReset" type="button">RESET</button>
+      <button class="os-dock-btn" id="osDockView" type="button">2D/3D</button>
+      <button class="os-dock-btn" id="osDockClearLog" type="button">CLEAR LOG</button>
+      <span class="os-dock-status mono" id="osDockStatus">READY</span>
+    </nav>
   </div>
 
   <div id="microInspectorTitle" hidden></div>
