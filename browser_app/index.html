@@ -12,110 +12,12 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="microscopic.css">
-  <link rel="stylesheet" href="landing.css">
   <script src="flowline-sim.js" defer></script>
   <script src="microscopic.js" defer></script>
   <script type="module" src="flowline-3d.js"></script>
-  <script src="landing.js" defer></script>
 </head>
 <body>
-  <div class="landing-shell" id="flowlineLanding" aria-label="Flowline entry interface">
-    <div class="landing-grid-bg" aria-hidden="true"></div>
-    <canvas class="landing-plume" id="landingPlume" aria-hidden="true"></canvas>
-
-    <header class="landing-topbar">
-      <div class="landing-brand">
-        <span class="landing-mark" aria-hidden="true">FL</span>
-        <div>
-          <div class="landing-wordmark">FLOWLINE</div>
-          <div class="landing-sub mono">TRAFFIC SIMULATION WORKSTATION</div>
-        </div>
-      </div>
-      <div class="landing-topstatus mono" id="landingClock">SYS READY</div>
-      <button class="landing-enter-btn" id="landingEnter" type="button"><span>ENTER WORKSTATION</span><span aria-hidden="true">↗</span></button>
-    </header>
-
-    <main class="landing-main">
-      <section class="landing-hero landing-cell">
-        <div class="landing-cell-head mono"><span>[01] / ENTRY</span><span>SHOCKWAVE PROPAGATION SIM</span></div>
-        <p class="landing-eyebrow mono">DETERMINISTIC · MICROSCOPIC · 2D/3D</p>
-        <h1 class="landing-title">A TACTILE OPERATING SURFACE<br>FOR TRAFFIC FLOW.</h1>
-        <p class="landing-lede">Flowline models individual vehicles, lane closures, queue formation, and collision-risk telemetry on a controlled corridor. Inspect behavior frame-by-frame, export runs, and move from scenario setup to 3D perspective without leaving the workstation.</p>
-        <div class="landing-actions">
-          <button class="landing-action primary" id="landingLaunch" type="button">Launch simulation</button>
-          <a class="landing-action" href="#landing-modules">Inspect modules</a>
-        </div>
-        <div class="landing-hero-meta mono">
-          <span>500 M CORRIDOR</span><span>SEEDED RNG</span><span>CSV / JSON EXPORT</span>
-        </div>
-      </section>
-
-      <section class="landing-cell landing-diagnostics" aria-label="System diagnostics">
-        <div class="landing-cell-head mono"><span>[02] / DIAGNOSTICS</span><span id="landingDiagState">IDLE</span></div>
-        <div class="diag-grid">
-          <div class="diag-item"><span class="diag-k mono">ENGINE</span><strong class="diag-v">FlowlineSim</strong><span class="diag-s mono">individual-vehicle model</span></div>
-          <div class="diag-item"><span class="diag-k mono">TIME STEP</span><strong class="diag-v mono">0.025 s</strong><span class="diag-s mono">fixed simulation dt</span></div>
-          <div class="diag-item"><span class="diag-k mono">VIEWPORTS</span><strong class="diag-v">2D + 3D</strong><span class="diag-s mono">synchronized frame state</span></div>
-          <div class="diag-item"><span class="diag-k mono">OUTPUT</span><strong class="diag-v">Telemetry</strong><span class="diag-s mono">collisions / risk / history</span></div>
-        </div>
-        <div class="diag-terminal mono" aria-label="Boot log">
-          <div class="diag-line"><span class="diag-prompt">flowline@corridor:~$</span> load scenario --seed 41</div>
-          <div class="diag-line muted">ready: 10 vehicles · 2 lanes · 500m</div>
-          <div class="diag-line"><span class="diag-prompt">flowline@corridor:~$</span> arm telemetry --collisions --risk</div>
-          <div class="diag-line muted">export channels: csv, json, scenario</div>
-        </div>
-      </section>
-
-      <section class="landing-cell landing-modules" id="landing-modules" aria-label="Modules">
-        <div class="landing-cell-head mono"><span>[03] / MODULES</span><span>CAPABILITIES</span></div>
-        <div class="module-grid">
-          <article class="module-card"><span class="module-idx mono">M-01</span><h2>Scenario Control</h2><p>Configure arrivals, speed limit, lane closures, barrier position, seed, and duration before each run.</p></article>
-          <article class="module-card"><span class="module-idx mono">M-02</span><h2>Kinematic Schematic</h2><p>Track vehicle positions, lane changes, gaps, and selection telemetry in the 2D corridor view.</p></article>
-          <article class="module-card"><span class="module-idx mono">M-03</span><h2>3D Perspective</h2><p>Inspect the same simulation state through chase, orbit, top, and cinematic camera modes.</p></article>
-          <article class="module-card"><span class="module-idx mono">M-04</span><h2>Collision Log</h2><p>Record impact time, vehicle identity, impact speed, stopping distance, severity, and export CSV.</p></article>
-        </div>
-      </section>
-
-      <section class="landing-cell landing-mix" aria-label="Vehicle mix">
-        <div class="landing-cell-head mono"><span>[04] / FLEET</span><span>HETEROGENEOUS MIX</span></div>
-        <div class="mix-grid">
-          <div class="mix-card"><span class="mix-name">Car</span><span class="mix-meta mono">45% · 1.0 PCU</span></div>
-          <div class="mix-card"><span class="mix-name">Motorcycle</span><span class="mix-meta mono">24% · 0.5 PCU</span></div>
-          <div class="mix-card"><span class="mix-name">Auto-rickshaw</span><span class="mix-meta mono">13% · 0.8 PCU</span></div>
-          <div class="mix-card"><span class="mix-name">Bus</span><span class="mix-meta mono">8% · 3.0 PCU</span></div>
-          <div class="mix-card"><span class="mix-name">Truck</span><span class="mix-meta mono">10% · 3.5 PCU</span></div>
-        </div>
-      </section>
-
-      <section class="landing-cell landing-lab" aria-label="Lab workflow">
-        <div class="landing-cell-head mono"><span>[05] / LAB</span><span>RUN WORKFLOW</span></div>
-        <ol class="lab-steps">
-          <li><span class="lab-n mono">01</span><div><strong>Set scenario</strong><p>Choose road situation, seed, arrivals, speed limit, and barrier.</p></div></li>
-          <li><span class="lab-n mono">02</span><div><strong>Run / step</strong><p>Execute continuously or advance frame-by-frame for inspection.</p></div></li>
-          <li><span class="lab-n mono">03</span><div><strong>Audit telemetry</strong><p>Inspect selected vehicle, risk, collision records, and timeline markers.</p></div></li>
-          <li><span class="lab-n mono">04</span><div><strong>Export evidence</strong><p>Save scenario JSON, run JSON, or collision CSV for review.</p></div></li>
-        </ol>
-      </section>
-
-      <section class="landing-cell landing-contact" aria-label="Entry">
-        <div class="landing-cell-head mono"><span>[06] / TERMINAL</span><span>SESSION ENTRY</span></div>
-        <div class="contact-terminal mono">
-          <div><span class="diag-prompt">flowline@local:~$</span> open workstation --mode split</div>
-          <div class="muted">preserving simulation state, hooks, and deterministic behavior</div>
-          <div><span class="diag-prompt">flowline@local:~$</span> <span class="landing-caret" aria-hidden="true">_</span></div>
-        </div>
-        <button class="landing-action primary landing-enter-wide" id="landingEnterBottom" type="button">Enter Flowline Workstation</button>
-      </section>
-    </main>
-
-    <nav class="landing-dock mono" aria-label="Landing dock">
-      <a href="#landing-modules">Modules</a>
-      <a href="#top" data-landing-top>Top</a>
-      <button type="button" id="landingDockEnter">Enter</button>
-    </nav>
-  </div>
-
-  <div class="app-shell" id="flowlineApp" hidden>
+  <div class="app-shell">
     <header class="topbar" role="banner">
       <div class="topbar-left">
         <div class="brand" aria-label="Flowline vehicle traffic studio">
@@ -359,6 +261,16 @@
     </div>
   </div>
 
+  <div id="microInspectorTitle" hidden></div>
+  <div id="microInspectorHelp" hidden></div>
+  <div id="microInspectorEmptyDetail" hidden></div>
+  <div id="microInspectorContentDetail" hidden></div>
+  <div id="microSelectedTypeDetail" hidden></div>
+  <div id="microSelectedSpeedDetail" hidden></div>
+  <div id="microSelectedLaneDetail" hidden></div>
+  <div id="microSelectedGapDetail" hidden></div>
+  <div id="microSelectedLeaderDetail" hidden></div>
+  <div id="microSelectedStatusDetail" hidden></div>
   <button id="microThemeToggle" hidden aria-hidden="true"></button>
 </body>
 </html>

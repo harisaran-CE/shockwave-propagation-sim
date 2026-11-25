@@ -21,9 +21,6 @@
 }
 *, *::before, *::after { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; overflow: hidden; }
-body.workstation-active { overflow: hidden; }
-body:not(.workstation-active) { overflow: auto; }
-body:not(.workstation-active) .app-shell#flowlineApp { display: none; }
 body { background: var(--bg); color: var(--text); font: 13px/1.4 var(--font-ui); }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
