@@ -1,10 +1,10 @@
-﻿/* Flowline OS shell compatibility: keep JS hook selectors and state classes working. */
-#microCrashVehicles:empty + #microCrashEmpty { display: block; }
-#microCrashVehicles:not(:empty) + #microCrashEmpty { display: none; }
-.timeline-marker[hidden] { display: none !important; }
+﻿/* Microscopic compat: keep JS-hooked classes stable while workstation CSS drives layout */
 .micro-road-wrap.is-selecting #microRoad { cursor: crosshair; }
 .micro-road-wrap.is-vehicle-dragging #microRoad,
 .micro-road-wrap.is-barrier-dragging #microRoad { cursor: grabbing; }
 .micro-road-wrap.is-vehicle-draggable #microRoad { cursor: grab; }
 .micro-road-wrap.is-barrier-draggable #microRoad { cursor: ew-resize; }
 .micro-road-wrap.has-selection #microRoad { cursor: pointer; }
+.timeline-marker[hidden] { display: none !important; }
+#microCrashVehicles:empty + #microCrashEmpty { display: block; }
+#microCrashVehicles:not(:empty) + #microCrashEmpty { display: none; }
