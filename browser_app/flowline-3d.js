@@ -746,46 +746,48 @@
 
   function render(now = performance.now()) {
     if (!initialized) return;
+    if (!animationFrame) animationFrame = 0;
     const delta = lastTime ? (now - lastTime) / 1000 : 0.016;
     lastTime = now;
-    if (!frozen) {
-      updateCamera(delta);
-      updateVehicles(delta);
-      updateBarrier();
-      updateTrails();
-      updateCrashMoment();
-    }
-    if (speedLabel?.visible) {
-      const p = speedLabel.position.clone().project(camera);
-      const x = (p.x * 0.5 + 0.5) * canvas.clientWidth;
-      const y = (-p.y * 0.5 + 0.5) * canvas.clientHeight;
-      speedLabel.element.style.transform = `translate(${x}px, ${y - 24}px)`;
-      speedLabel.element.style.display = p.z < 1 ? 'block' : 'none';
-    } else if (speedLabel?.element) {
-      speedLabel.element.style.display = 'none';
-    }
-    if (eventLabel?.visible) {
-      const p = eventLabel.position.clone().project(camera);
-      const x = (p.x * 0.5 + 0.5) * canvas.clientWidth;
-      const y = (-p.y * 0.5 + 0.5) * canvas.clientHeight;
-      eventLabel.element.style.transform = `translate(${x}px, ${y - 20}px)`;
-      eventLabel.element.style.display = p.z < 1 ? 'block' : 'none';
-    } else if (eventLabel?.element) {
-      eventLabel.element.style.display = 'none';
-    }
-    renderer.render(scene, camera);
-    if (now - fpsStart > 1500) {
-      const fps = fpsFrames * 1000 / Math.max(1, now - fpsStart);
-      if (fps < 22 && active) {
-        enableLowGraphics(true);
-        setActive(false);
-      } else if (fps < 32) {
-        enableLowGraphics(true);
+    const panel3d = canvas.closest('.viewport-panel');
+    const visible = !!(panel3d && !panel3d.classList.contains('hidden') && canvas.getClientRects().length > 0);
+    if (visible !== active) active = visible;
+    if (visible) {
+      resize();
+      if (!frozen) {
+        updateCamera(delta);
+        updateVehicles(delta);
+        updateBarrier();
+        updateTrails();
+        updateCrashMoment();
       }
-      fpsStart = now;
-      fpsFrames = 0;
+      if (speedLabel?.visible) {
+        const p = speedLabel.position.clone().project(camera);
+        const x = (p.x * 0.5 + 0.5) * canvas.clientWidth;
+        const y = (-p.y * 0.5 + 0.5) * canvas.clientHeight;
+        speedLabel.element.style.transform = `translate(${x}px, ${y - 24}px)`;
+        speedLabel.element.style.display = p.z < 1 ? 'block' : 'none';
+      } else if (speedLabel?.element) {
+        speedLabel.element.style.display = 'none';
+      }
+      if (eventLabel?.visible) {
+        const p = eventLabel.position.clone().project(camera);
+        const x = (p.x * 0.5 + 0.5) * canvas.clientWidth;
+        const y = (-p.y * 0.5 + 0.5) * canvas.clientHeight;
+        eventLabel.element.style.transform = `translate(${x}px, ${y - 20}px)`;
+        eventLabel.element.style.display = p.z < 1 ? 'block' : 'none';
+      } else if (eventLabel?.element) {
+        eventLabel.element.style.display = 'none';
+      }
+      renderer.render(scene, camera);
+      if (now - fpsStart > 1500) {
+        const fps = fpsFrames * 1000 / Math.max(1, now - fpsStart);
+        if (fps < 32) enableLowGraphics(true);
+        fpsStart = now;
+        fpsFrames = 0;
+      }
+      fpsFrames += 1;
     }
-    fpsFrames += 1;
     animationFrame = requestAnimationFrame(render);
   }
 
