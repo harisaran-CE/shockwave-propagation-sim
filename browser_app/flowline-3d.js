@@ -11,14 +11,15 @@
 
   const SIM = window.FlowlineSim || {};
   const ROAD_LENGTH = SIM.ROAD_LENGTH || 500;
-  const LANE_WIDTH_M = SIM.LANE_WIDTH_M || 4;
+  const LANE_WIDTH_M = SIM.LANE_WIDTH_M || 4; // simulation truth
   const SUBLANE_COUNT = SIM.SUBLANE_COUNT || 4;
   const LANE_COUNT = 2;
-  const ROAD_WIDTH = LANE_COUNT * LANE_WIDTH_M;
-  const ROAD_MIN_Z = -LANE_WIDTH_M / 2;
-  const ROAD_MAX_Z = ROAD_MIN_Z + ROAD_WIDTH;
-  const ROAD_CENTER_Z = (ROAD_MIN_Z + ROAD_MAX_Z) / 2;
-  const VISUAL_Z_SCALE_TOP = 8.5;
+  const VISUAL_LANE_WIDTH = 6.0; // 3D-only visual spacing for readability
+  const VISUAL_ROAD_WIDTH = LANE_COUNT * VISUAL_LANE_WIDTH;
+  const VISUAL_ROAD_MIN_Z = -VISUAL_LANE_WIDTH / 2;
+  const VISUAL_ROAD_MAX_Z = VISUAL_ROAD_MIN_Z + VISUAL_ROAD_WIDTH;
+  const VISUAL_ROAD_CENTER_Z = (VISUAL_ROAD_MIN_Z + VISUAL_ROAD_MAX_Z) / 2;
+  const visualZ = (simZ) => (simZ / LANE_WIDTH_M) * VISUAL_LANE_WIDTH;
 
   const PALETTES = {
     car: [0x4F86C6, 0x3FB28A, 0xD97706, 0xC75C5C, 0x7C6FD6, 0x2F855A, 0xB45309, 0x64748B],
@@ -44,7 +45,7 @@
   let worldGroup;
   let initialized = false, active = false, frame = null;
   let animationFrame = 0, lastTime = 0, fpsStart = 0, fpsFrames = 0;
-  let lowGraphics = false, frozen = false, currentMode = 'top';
+  let lowGraphics = false, frozen = false, currentMode = 'chase';
   let cameraDistance = 70, orbitAngle = 0.32, orbitPitch = 0.55;
   let cameraTarget = new THREE.Vector3(250, 0, 0);
   let cameraPosition = new THREE.Vector3(195, 38, 42);
@@ -65,8 +66,8 @@
   const prevLateral = new Map();
   const modeButtons = Array.from(document.querySelectorAll('[data-3d-mode]'));
   const cameraControls = {
-    enableRotate: false,
-    object: { up: new THREE.Vector3(0, 0, -1) },
+    enableRotate: true,
+    object: { up: new THREE.Vector3(0, 1, 0) },
     update() { /* no OrbitControls; custom camera update in render loop */ }
   };
   const lowGraphicsToggle = document.querySelector('[data-3d-low-graphics]');
@@ -119,41 +120,41 @@
   function addRoad() {
     roadGroup = new THREE.Group();
     const asphalt = new THREE.Mesh(
-      new THREE.BoxGeometry(ROAD_LENGTH, 0.02, ROAD_WIDTH),
+      new THREE.BoxGeometry(ROAD_LENGTH, 0.02, VISUAL_ROAD_WIDTH),
       new THREE.MeshStandardMaterial({ map: makeAsphaltTexture(), roughness: 0.92, metalness: 0.02 })
     );
-    asphalt.position.set(ROAD_LENGTH / 2, -0.01, ROAD_CENTER_Z);
+    asphalt.position.set(ROAD_LENGTH / 2, -0.01, VISUAL_ROAD_CENTER_Z);
     asphalt.receiveShadow = true;
     roadGroup.add(asphalt);
 
     const shoulder = new THREE.Mesh(
-      new THREE.BoxGeometry(ROAD_LENGTH, 0.02, ROAD_WIDTH + 12),
+      new THREE.BoxGeometry(ROAD_LENGTH, 0.02, VISUAL_ROAD_WIDTH + 14),
       material(0xB6C0C8, 0.96)
     );
-    shoulder.position.set(ROAD_LENGTH / 2, -0.02, ROAD_CENTER_Z);
+    shoulder.position.set(ROAD_LENGTH / 2, -0.02, VISUAL_ROAD_CENTER_Z);
     shoulder.receiveShadow = true;
     roadGroup.add(shoulder);
 
-    for (const z of [ROAD_MIN_Z, ROAD_MAX_Z]) {
-      const edge = new THREE.Mesh(new THREE.BoxGeometry(ROAD_LENGTH, 0.01, 0.14), material(0xF3F4F6, 0.5));
+    for (const z of [VISUAL_ROAD_MIN_Z, VISUAL_ROAD_MAX_Z]) {
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(ROAD_LENGTH, 0.01, 0.16), material(0xF3F4F6, 0.5));
       edge.position.set(ROAD_LENGTH / 2, 0.011, z);
       roadGroup.add(edge);
     }
 
     const lineMaterial = material(0xF7F8FA, 0.45);
     for (let x = 5; x < ROAD_LENGTH; x += 16) {
-      const dash = new THREE.Mesh(new THREE.BoxGeometry(8, 0.01, 0.1), lineMaterial);
-      dash.position.set(x, 0.012, ROAD_CENTER_Z);
+      const dash = new THREE.Mesh(new THREE.BoxGeometry(8, 0.01, 0.12), lineMaterial);
+      dash.position.set(x, 0.012, VISUAL_ROAD_CENTER_Z);
       roadGroup.add(dash);
     }
 
-    const sublaneMaterial = new THREE.MeshBasicMaterial({ color: 0xDCE3DF, transparent: true, opacity: 0.28 });
+    const sublaneMaterial = new THREE.MeshBasicMaterial({ color: 0xDCE3DF, transparent: true, opacity: 0.3 });
     for (let lane = 0; lane < LANE_COUNT; lane += 1) {
-      const laneCenter = lane * LANE_WIDTH_M;
+      const laneCenter = lane * VISUAL_LANE_WIDTH;
       for (let track = 1; track < SUBLANE_COUNT; track += 1) {
-        const z = laneCenter - LANE_WIDTH_M / 2 + (LANE_WIDTH_M * track) / SUBLANE_COUNT;
-        for (let x = 3; x < ROAD_LENGTH; x += 10) {
-          const dash = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.008, 0.05), sublaneMaterial);
+        const z = laneCenter - VISUAL_LANE_WIDTH / 2 + (VISUAL_LANE_WIDTH * track) / SUBLANE_COUNT;
+        for (let x = 2.5; x < ROAD_LENGTH; x += 7) {
+          const dash = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.008, 0.06), sublaneMaterial);
           dash.position.set(x, 0.0105, z);
           roadGroup.add(dash);
         }
@@ -168,7 +169,7 @@
     const poleMat = material(0x9AA6B0, 0.65, 0, 0.1);
     for (let i = 0; i < 16; i += 1) {
       const x = 15 + i * 32;
-      for (const z of [ROAD_MIN_Z - 2.2, ROAD_MAX_Z + 2.2]) {
+      for (const z of [VISUAL_ROAD_MIN_Z - 2.6, VISUAL_ROAD_MAX_Z + 2.6]) {
         const pole = new THREE.Mesh(poleGeometry, poleMat);
         pole.position.set(x, 0.45, z);
         pole.receiveShadow = true;
@@ -182,17 +183,17 @@
     barrierGroup = new THREE.Group();
     const striped = material(0xe5a34d);
     const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.2, 0.18), material(0x293b40));
-    const board = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.24, LANE_WIDTH_M - 0.2), striped);
+    const board = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.24, VISUAL_LANE_WIDTH - 0.4), striped);
     board.position.y = 1.05;
     barrierGroup.add(post.clone(), post.clone(), board);
-    barrierGroup.children[0].position.set(0, 0.6, -(LANE_WIDTH_M / 2 - 0.3));
-    barrierGroup.children[1].position.set(0, 0.6, (LANE_WIDTH_M / 2 - 0.3));
-    for (let z = -1.4; z <= 1.4; z += 0.7) {
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.26, 0.4), material(Math.round(z / 0.7) % 2 === 0 ? 0xf2e5b3 : 0x26343d));
+    barrierGroup.children[0].position.set(0, 0.6, -(VISUAL_LANE_WIDTH / 2 - 0.35));
+    barrierGroup.children[1].position.set(0, 0.6, (VISUAL_LANE_WIDTH / 2 - 0.35));
+    for (let z = -2.2; z <= 2.2; z += 0.75) {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.26, 0.45), material(Math.round(z / 0.75) % 2 === 0 ? 0xf2e5b3 : 0x26343d));
       stripe.position.set(-0.13, 1.05, z);
       barrierGroup.add(stripe);
     }
-    for (const z of [-1.1, 1.1]) {
+    for (const z of [-1.8, 1.8]) {
       const cone = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.65, 6), material(0xe77335));
       cone.position.set(-0.7, 0.325, z);
       barrierGroup.add(cone);
@@ -409,11 +410,12 @@
       const prev = prevLateral.has(vehicle.id) ? prevLateral.get(vehicle.id) : vehicle.lateralPositionM;
       const lateralSmooth = prev + (vehicle.lateralPositionM - prev) * Math.min(1, delta * 8);
       prevLateral.set(vehicle.id, lateralSmooth);
+      const visualLateral = visualZ(lateralSmooth);
 
       // Body roll/tilt on lane change, pitch on accel/brake
       const lateralVel = (vehicle.lateralPositionM - prev) * 2;
       const pitch = Math.max(-0.03, Math.min(0.03, -(vehicle.acceleration || 0) * 0.008));
-      g.position.set(vehicle.position, 0.02, lateralSmooth);
+      g.position.set(vehicle.position, 0.02, visualLateral);
       g.rotation.y = -lateralVel * 0.04;
       g.rotation.z = -lateralVel * 0.018;
       g.rotation.x = pitch;
@@ -431,7 +433,7 @@
       if (g.userData.tailR) { g.userData.tailR.material.color.setHex(tailColor); }
 
       // Contact shadow
-      dummy.position.set(vehicle.position, 0.015, lateralSmooth);
+      dummy.position.set(vehicle.position, 0.015, visualLateral);
       dummy.scale.set(Math.max(1.5, vehicle.length * 0.55), Math.max(0.4, vehicle.width * 0.55), 1);
       dummy.rotation.set(-Math.PI / 2, 0, 0);
       dummy.updateMatrix();
@@ -445,11 +447,12 @@
     const selected = frame.vehicles.find((vehicle) => frame.selectedVehicleIds.includes(vehicle.id));
     if (selected) {
       const selLat = prevLateral.has(selected.id) ? prevLateral.get(selected.id) : selected.lateralPositionM;
+      const visualSelLat = visualZ(selLat);
       selectedOutline.visible = true;
-      selectedOutline.position.set(selected.position, 0.08, selLat);
+      selectedOutline.position.set(selected.position, 0.08, visualSelLat);
       selectedOutline.scale.set(Math.max(1.2, selected.length / 2), 1, Math.max(1.2, selected.width));
       speedLabel.visible = true;
-      speedLabel.position.set(selected.position, 3.2, selLat);
+      speedLabel.position.set(selected.position, 3.2, visualSelLat);
       speedLabel.element.textContent = `${(selected.speed * 3.6).toFixed(0)} km/h`;
     } else {
       selectedOutline.visible = false;
@@ -505,7 +508,7 @@
       trail.scale.x = Math.min(8, 1.2 + speed / 16);
       trail.rotation.x = -Math.PI / 2;
       const lat = prevLateral.has(vehicle.id) ? prevLateral.get(vehicle.id) : vehicle.lateralPositionM;
-      trail.position.set(vehicle.position - Math.min(4, 1.5 + speed / 35), 0.045, lat);
+      trail.position.set(vehicle.position - Math.min(4, 1.5 + speed / 35), 0.045, visualZ(lat));
       trail.visible = true;
     });
   }
@@ -532,13 +535,13 @@
   function updateCamera(delta) {
     const selected = frame?.vehicles?.find((vehicle) => frame.selectedVehicleIds.includes(vehicle.id));
     const lookX = selected ? selected.position : ROAD_LENGTH * 0.45;
-    const lookZ = selected ? selected.lateralPositionM : ROAD_CENTER_Z;
+    const lookZ = selected ? visualZ(selected.lateralPositionM) : VISUAL_ROAD_CENTER_Z;
 
     if (currentMode === 'top') {
       camera = orthoCamera;
       const x = ROAD_LENGTH / 2;
-      const z = ROAD_CENTER_Z * VISUAL_Z_SCALE_TOP;
-      camera.position.set(x, 250, z);
+      const z = VISUAL_ROAD_CENTER_Z;
+      camera.position.set(x, 280, z);
       camera.up.set(0, 0, -1);
       camera.lookAt(x, 0, z);
       cameraControls.object.up.copy(camera.up);
@@ -553,8 +556,9 @@
     cameraControls.object.up.copy(camera.up);
     cameraControls.enableRotate = true;
     if (currentMode === 'chase' && selected) {
-      const target = new THREE.Vector3(selected.position + 20, 0.5, selected.lateralPositionM);
-      const desiredPosition = new THREE.Vector3(selected.position - cameraDistance, 26, selected.lateralPositionM + 34);
+      const selZ = visualZ(selected.lateralPositionM);
+      const target = new THREE.Vector3(selected.position + 20, 0.5, selZ);
+      const desiredPosition = new THREE.Vector3(selected.position - cameraDistance, 26, selZ + 34);
       const blend = 1 - Math.pow(0.0008, Math.min(delta, 0.05));
       cameraPosition.lerp(desiredPosition, blend);
       cameraTarget.lerp(target, blend);
@@ -564,7 +568,7 @@
     }
 
     if (currentMode === 'orbit') {
-      const target = new THREE.Vector3(cameraTarget.x || ROAD_LENGTH / 2, 0, (cameraTarget.z || ROAD_CENTER_Z));
+      const target = new THREE.Vector3(cameraTarget.x || ROAD_LENGTH / 2, 0, cameraTarget.z || VISUAL_ROAD_CENTER_Z);
       const desiredPosition = new THREE.Vector3(
         target.x + Math.cos(orbitAngle) * cameraDistance,
         36 + cameraDistance * orbitPitch * 0.35,
@@ -580,8 +584,8 @@
 
     // cinematic
     const t = performance.now() * 0.00005;
-    const target = new THREE.Vector3(lookX + Math.sin(t) * 40, 0.4, ROAD_CENTER_Z);
-    const desiredPosition = new THREE.Vector3(target.x - 95, 42, ROAD_MAX_Z + 40);
+    const target = new THREE.Vector3(lookX + Math.sin(t) * 40, 0.4, VISUAL_ROAD_CENTER_Z);
+    const desiredPosition = new THREE.Vector3(target.x - 95, 42, VISUAL_ROAD_MAX_Z + 40);
     const blend = 1 - Math.pow(0.0008, Math.min(delta, 0.05));
     cameraPosition.lerp(desiredPosition, blend);
     cameraTarget.lerp(target, blend);
@@ -593,12 +597,12 @@
     const position = frame?.barrierPositionM;
     barrierGroup.visible = position !== null && position !== undefined;
     if (barrierGroup.visible) {
-      let laneCenter = ROAD_CENTER_Z;
+      let laneCenterSim = ROAD_CENTER_Z;
       if (frame?.scenario === 'partial') {
         const closed = Number(frame?.closedLane);
-        if (closed === 0 || closed === 1) laneCenter = closed * LANE_WIDTH_M;
+        if (closed === 0 || closed === 1) laneCenterSim = closed * LANE_WIDTH_M;
       }
-      barrierGroup.position.set(position, 0, laneCenter);
+      barrierGroup.position.set(position, 0, visualZ(laneCenterSim));
       barrierGroup.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     }
     if (glowMaterial) glowMaterial.opacity = 0.45 + Math.sin(performance.now() * 0.01) * 0.35;
@@ -730,10 +734,8 @@
     perspCamera.aspect = aspect;
     perspCamera.updateProjectionMatrix();
 
-    const topZScale = currentMode === 'top' ? VISUAL_Z_SCALE_TOP : 1;
     const frustumWidth = ROAD_LENGTH + 30; // x in [-15, 515]
-    const roadVisualHeight = ROAD_WIDTH * topZScale;
-    const frustumHeight = Math.max(roadVisualHeight + 24, frustumWidth / aspect);
+    const frustumHeight = Math.max(VISUAL_ROAD_WIDTH + 24, frustumWidth / aspect);
     orthoCamera.left = -frustumWidth / 2;
     orthoCamera.right = frustumWidth / 2;
     orthoCamera.top = frustumHeight / 2;
@@ -750,9 +752,9 @@
     });
     const top = mode === 'top';
     camera = top ? orthoCamera : perspCamera;
-    if (worldGroup) worldGroup.scale.set(1, 1, top ? VISUAL_Z_SCALE_TOP : 1);
+    if (worldGroup) worldGroup.scale.set(1, 1, 1);
     cameraControls.enableRotate = !top;
-    cameraControls.object.up.set(top ? 0 : 0, top ? 0 : 1, top ? -1 : 0);
+    cameraControls.object.up.set(0, top ? 0 : 1, top ? -1 : 0);
     resize();
   }
 
@@ -849,7 +851,7 @@
 
   window.addEventListener('resize', () => { resize(); syncToPanelVisibility(); });
     if (buildScene()) {
-      setMode('top');
+      setMode('chase');
       window.flowline3d = {
         renderFrame, setActive, syncToPanelVisibility, selectVehicleById,
         setMode,
@@ -877,7 +879,7 @@
           }
           return null;
         },
-        constants: { ROAD_LENGTH, LANE_WIDTH_M, SUBLANE_COUNT, LANE_COUNT, ROAD_WIDTH, ROAD_MIN_Z, ROAD_MAX_Z, ROAD_CENTER_Z }
+        constants: { ROAD_LENGTH, LANE_WIDTH_M, SUBLANE_COUNT, LANE_COUNT, VISUAL_LANE_WIDTH, VISUAL_ROAD_WIDTH, VISUAL_ROAD_MIN_Z, VISUAL_ROAD_MAX_Z, VISUAL_ROAD_CENTER_Z }
       };
       const panel3d = canvas.closest('.viewport-panel');
       if ('ResizeObserver' in window && panel3d) new ResizeObserver(() => { resize(); syncToPanelVisibility(); }).observe(panel3d);
