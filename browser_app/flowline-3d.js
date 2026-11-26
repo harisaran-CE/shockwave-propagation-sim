@@ -388,7 +388,7 @@
       g.visible = true;
 
       g.userData.vehicleId = vehicle.id;
-      const vColor = colorForVehicle(vehicle);
+      const vColor = COLORS[vehicle.kind] || 0x888888;
       if (g.userData.paint) g.userData.paint.color.setHex(vColor);
       if (g.userData.cabPaint) g.userData.cabPaint.color.setHex(vColor);
 
