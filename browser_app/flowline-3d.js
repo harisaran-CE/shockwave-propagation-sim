@@ -23,8 +23,8 @@
   const TOP_FRUSTUM_WIDTH = 115;
 
   const PALETTES = {
-    car: [0x4F86C6, 0x3FB28A, 0xD97706, 0xC75C5C, 0x7C6FD6, 0x2F855A, 0xB45309, 0x64748B],
-    motorcycle: [0xE6BB72, 0xD97706],
+    car: [0x4F86C6, 0x3FB28A, 0xD97706, 0xC75C5C, 0x7C6FD6, 0x2F855A, 0xB45309, 0x64748B, 0xE63946, 0x1D3557, 0xF4A261, 0x2A9D8F],
+    motorcycle: [0xE63946, 0x1D3557, 0xF4A261, 0x2A9D8F, 0x6A4C93, 0xFF6B6B, 0x00B4D8, 0xFFB703],
     rickshaw: [0xD8A951, 0xC2410C],
     bus: [0x5FA8D3, 0x4A90A4, 0xE07A5F, 0x3D5A80, 0x7A9E7E],
     truck: [0x9AA5B1, 0x7B8794, 0xB08D57, 0x6B7280, 0x8D99AE, 0xA3A380]
@@ -447,7 +447,7 @@
       g.visible = true;
 
       g.userData.vehicleId = vehicle.id;
-      const vColor = COLORS[vehicle.kind] || 0x888888;
+      const vColor = colorForVehicle(vehicle);
       if (g.userData.paint) g.userData.paint.color.setHex(vColor);
       if (g.userData.cabPaint) g.userData.cabPaint.color.setHex(vColor);
 
