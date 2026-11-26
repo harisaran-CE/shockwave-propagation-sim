@@ -895,7 +895,6 @@
         lateralPositionM, lateralChangeElapsed, lateralChangeFromM, lateralChangeTargetM
       });
     }
-    const lateralSpeedCap = (vehicle.kind === 'truck' || vehicle.kind === 'bus') ? 0.9 : 1.4;
     for (const vehicle of state.vehicles) {
       vehicle.previousPosition = vehicle.position;
       vehicle.position = nextPosition.get(vehicle.id);
@@ -906,34 +905,27 @@
       const lateralState = nextLateralStates.get(vehicle.id);
       if (vehicle.lateralChangeFromM !== null) {
         vehicle.previousLateralChangeElapsed = vehicle.lateralChangeElapsed;
+        const lateralSpeedCap = (vehicle.kind === 'truck' || vehicle.kind === 'bus') ? 0.9 : 1.4;
         let targetLat = lateralState.lateralPositionM;
         const maxDelta = lateralSpeedCap * STEP;
         const deltaLat = targetLat - vehicle.lateralPositionM;
         if (Math.abs(deltaLat) > maxDelta) {
           targetLat = vehicle.lateralPositionM + Math.sign(deltaLat) * maxDelta;
-          // keep change in progress while rate-limited
-          if (lateralState.lateralChangeFromM === null) {
-            vehicle.lateralChangeFromM = vehicle.lateralPositionM;
-            vehicle.lateralChangeTargetM = lateralState.lateralChangeTargetM ?? targetLat;
-          } else {
-            vehicle.lateralChangeFromM = lateralState.lateralChangeFromM;
-            vehicle.lateralChangeTargetM = lateralState.lateralChangeTargetM;
-          }
-          vehicle.lateralChangeElapsed = Math.min(vehicle.lateralChangeDuration - STEP * 0.5, lateralState.lateralChangeElapsed);
+          vehicle.lateralPositionM = targetLat;
+          vehicle.lateralChangeFromM = vehicle.lateralPositionM;
+          vehicle.lateralChangeTargetM = lateralState.lateralChangeTargetM ?? vehicle.lateralChangeTargetM;
+          vehicle.lateralChangeElapsed = Math.min(vehicle.lateralChangeDuration - STEP, (lateralState.lateralChangeElapsed ?? vehicle.lateralChangeElapsed) );
         } else {
           vehicle.lateralPositionM = targetLat;
           vehicle.lateralChangeElapsed = lateralState.lateralChangeElapsed;
           vehicle.lateralChangeFromM = lateralState.lateralChangeFromM;
           vehicle.lateralChangeTargetM = lateralState.lateralChangeTargetM;
-          // snap finish when close
-          if (vehicle.lateralChangeTargetM !== null && Math.abs(vehicle.lateralChangeTargetM - vehicle.lateralPositionM) < 0.01) {
-            vehicle.lateralPositionM = vehicle.lateralChangeTargetM;
-            vehicle.lateralChangeFromM = null;
-            vehicle.lateralChangeTargetM = null;
-          }
         }
-        if (vehicle.lateralChangeFromM !== null && Math.abs(vehicle.lateralChangeTargetM - vehicle.lateralPositionM) >= 0.01) {
-          vehicle.lateralPositionM = targetLat;
+        if (vehicle.lateralChangeTargetM !== null && Math.abs(vehicle.lateralChangeTargetM - vehicle.lateralPositionM) < 0.01) {
+          vehicle.lateralPositionM = vehicle.lateralChangeTargetM;
+          vehicle.lateralChangeFromM = null;
+          vehicle.lateralChangeTargetM = null;
+          vehicle.lateralChangeElapsed = vehicle.lateralChangeDuration;
         }
       }
       vehicle.lateralSpeedMps = (vehicle.lateralPositionM - vehicle.previousLateralPositionM) / STEP;
