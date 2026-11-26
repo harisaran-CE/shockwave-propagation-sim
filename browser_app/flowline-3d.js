@@ -148,16 +148,14 @@
       roadGroup.add(dash);
     }
 
-    const sublaneMaterial = new THREE.MeshBasicMaterial({ color: 0xDCE3DF, transparent: true, opacity: 0.3 });
+    const sublaneMaterial = new THREE.MeshBasicMaterial({ color: 0xDCE3DF, transparent: true, opacity: 0.28 });
     for (let lane = 0; lane < LANE_COUNT; lane += 1) {
       const laneCenter = lane * VISUAL_LANE_WIDTH;
       for (let track = 1; track < SUBLANE_COUNT; track += 1) {
         const z = laneCenter - VISUAL_LANE_WIDTH / 2 + (VISUAL_LANE_WIDTH * track) / SUBLANE_COUNT;
-        for (let x = 2.5; x < ROAD_LENGTH; x += 7) {
-          const dash = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.008, 0.06), sublaneMaterial);
-          dash.position.set(x, 0.0105, z);
-          roadGroup.add(dash);
-        }
+        const line = new THREE.Mesh(new THREE.BoxGeometry(ROAD_LENGTH, 0.008, 0.045), sublaneMaterial);
+        line.position.set(ROAD_LENGTH / 2, 0.0105, z);
+        roadGroup.add(line);
       }
     }
     worldGroup.add(roadGroup);
