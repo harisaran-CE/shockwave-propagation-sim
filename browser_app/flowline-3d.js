@@ -42,7 +42,7 @@
   let renderer, scene, camera, orthoCamera, perspCamera;
   let initialized = false, active = false, frame = null;
   let animationFrame = 0, lastTime = 0, fpsStart = 0, fpsFrames = 0;
-  let lowGraphics = false, frozen = false, currentMode = 'chase';
+  let lowGraphics = false, frozen = false, currentMode = 'top';
   let cameraDistance = 70, orbitAngle = 0.32, orbitPitch = 0.55;
   let cameraTarget = new THREE.Vector3(250, 0, 0);
   let cameraPosition = new THREE.Vector3(195, 38, 42);
@@ -530,7 +530,7 @@
     if (currentMode === 'top') {
       camera = orthoCamera;
       const x = ROAD_LENGTH / 2;
-      camera.position.set(x, 260, ROAD_CENTER_Z + 0.001);
+      camera.position.set(x, 250, ROAD_CENTER_Z);
       camera.up.set(0, 0, -1);
       camera.lookAt(x, 0, ROAD_CENTER_Z);
       cameraTarget.set(x, 0, ROAD_CENTER_Z);
@@ -539,26 +539,43 @@
     }
 
     camera = perspCamera;
-    let target = new THREE.Vector3(lookX, 0, lookZ);
-    let desiredPosition = new THREE.Vector3(lookX - 95, 42, ROAD_MAX_Z + 40);
     if (currentMode === 'chase' && selected) {
-      target.set(selected.position + 20, 0.5, selected.lateralPositionM);
-      desiredPosition.set(selected.position - cameraDistance, 26, selected.lateralPositionM + 34);
-    } else if (currentMode === 'orbit') {
-      target.set(cameraTarget.x || ROAD_LENGTH / 2, 0, cameraTarget.z || ROAD_CENTER_Z);
-      desiredPosition.set(
+      const target = new THREE.Vector3(selected.position + 20, 0.5, selected.lateralPositionM);
+      const desiredPosition = new THREE.Vector3(selected.position - cameraDistance, 26, selected.lateralPositionM + 34);
+      const blend = 1 - Math.pow(0.0008, Math.min(delta, 0.05));
+      cameraPosition.lerp(desiredPosition, blend);
+      cameraTarget.lerp(target, blend);
+      camera.position.copy(cameraPosition);
+      camera.up.set(0, 1, 0);
+      camera.lookAt(cameraTarget);
+      return;
+    }
+
+    if (currentMode === 'orbit') {
+      const target = new THREE.Vector3(cameraTarget.x || ROAD_LENGTH / 2, 0, cameraTarget.z || ROAD_CENTER_Z);
+      const desiredPosition = new THREE.Vector3(
         target.x + Math.cos(orbitAngle) * cameraDistance,
         36 + cameraDistance * orbitPitch * 0.35,
         target.z + Math.sin(orbitAngle) * cameraDistance
       );
-    } else {
-      target.set(lookX, 0.4, ROAD_CENTER_Z);
-      desiredPosition.set(lookX - 95, 42, ROAD_MAX_Z + 40);
+      const blend = 1 - Math.pow(0.0008, Math.min(delta, 0.05));
+      cameraPosition.lerp(desiredPosition, blend);
+      cameraTarget.lerp(target, blend);
+      camera.position.copy(cameraPosition);
+      camera.up.set(0, 1, 0);
+      camera.lookAt(cameraTarget);
+      return;
     }
+
+    // cinematic
+    const t = performance.now() * 0.00005;
+    const target = new THREE.Vector3(lookX + Math.sin(t) * 40, 0.4, ROAD_CENTER_Z);
+    const desiredPosition = new THREE.Vector3(target.x - 95, 42, ROAD_MAX_Z + 40);
     const blend = 1 - Math.pow(0.0008, Math.min(delta, 0.05));
     cameraPosition.lerp(desiredPosition, blend);
     cameraTarget.lerp(target, blend);
     camera.position.copy(cameraPosition);
+    camera.up.set(0, 1, 0);
     camera.lookAt(cameraTarget);
   }
 
@@ -650,10 +667,10 @@
     scene.fog = new THREE.Fog(0xE8ECF1, 320, 900);
     perspCamera = new THREE.PerspectiveCamera(44, 2, 0.1, 1200);
     const aspect = 2;
-    const frustumHeight = ROAD_WIDTH + 18;
-    const frustumWidth = frustumHeight * aspect;
+    const frustumWidth = ROAD_LENGTH + 20;
+    const frustumHeight = frustumWidth / aspect;
     orthoCamera = new THREE.OrthographicCamera(-frustumWidth / 2, frustumWidth / 2, frustumHeight / 2, -frustumHeight / 2, 0.1, 2000);
-    camera = perspCamera;
+    camera = orthoCamera;
     scene.add(new THREE.HemisphereLight(0xcfe2f3, 0x1a2a1f, 1.15));
     const keyLight = new THREE.DirectionalLight(0xfff0d6, 3.0);
     keyLight.position.set(-80, 140, 70);
@@ -700,8 +717,8 @@
     const aspect = bounds.width / bounds.height;
     perspCamera.aspect = aspect;
     perspCamera.updateProjectionMatrix();
-    const frustumHeight = ROAD_WIDTH + 18;
-    const frustumWidth = frustumHeight * aspect;
+    const frustumWidth = ROAD_LENGTH + 20; // x in [-10, 510]
+    const frustumHeight = frustumWidth / aspect;
     orthoCamera.left = -frustumWidth / 2;
     orthoCamera.right = frustumWidth / 2;
     orthoCamera.top = frustumHeight / 2;
@@ -808,8 +825,17 @@
 
   window.addEventListener('resize', () => { resize(); syncToPanelVisibility(); });
     if (buildScene()) {
+      setMode('top');
       window.flowline3d = {
         renderFrame, setActive, syncToPanelVisibility, selectVehicleById,
+        setMode,
+        getCameraState: () => ({
+          mode: currentMode,
+          type: camera?.isOrthographicCamera ? 'orthographic' : 'perspective',
+          position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+          up: { x: camera.up.x, y: camera.up.y, z: camera.up.z },
+          target: { x: cameraTarget.x, y: cameraTarget.y, z: cameraTarget.z }
+        }),
         // Research/debug: verify rendered world Box3 against sim footprint.
         getVehicleBox: (id) => {
           for (const kind of Object.keys(vehiclePools)) {
