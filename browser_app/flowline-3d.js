@@ -331,12 +331,14 @@
     return group;
   }
 
+  // Raw unscaled mesh Box3 extents (meters in model space), including wheels.
+  // Scaling by vehicle.simDim / BASE_DIM makes the rendered Box3 match sim footprint.
   const VEHICLE_BASE_DIMS = {
-    car:        { length: 4.32, width: 1.85 },
-    motorcycle: { length: 2.00, width: 0.75 },
-    rickshaw:   { length: 2.60, width: 1.45 },
-    bus:        { length: 11.00, width: 2.50 },
-    truck:      { length: 8.50, width: 2.40 }
+    car:        { length: 4.32, width: 2.32 },
+    motorcycle: { length: 2.08, width: 0.80 },
+    rickshaw:   { length: 2.70, width: 1.80 },
+    bus:        { length: 11.08, width: 3.30 },
+    truck:      { length: 8.58, width: 3.24 }
   };
 
   function createVehicleLayers() {
