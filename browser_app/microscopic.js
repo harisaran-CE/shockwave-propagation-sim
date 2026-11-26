@@ -507,6 +507,9 @@
     if (window.flowline3d) {
       window.flowline3d.renderFrame({
         scenario: displaySettings.scenario,
+        closedLane: displaySettings.closedLane === null || displaySettings.closedLane === undefined
+          ? null
+          : Number(displaySettings.closedLane) - 1,
         barrierPositionM: displaySettings.scenario === 'busy'
           ? null
           : (frame ? frame.barrierPositionM : barrierPositionM),

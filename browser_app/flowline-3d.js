@@ -10,7 +10,10 @@
   if (!canvas || !roadWrap || !view2d || !view3d) return;
 
   const ROAD_LENGTH = 500;
-  const ROAD_WIDTH = 18;
+  const LANE_WIDTH_M = 4;
+  const LANE_COUNT = 2;
+  const ROAD_WIDTH = LANE_COUNT * LANE_WIDTH_M;
+  const ROAD_CENTER_Z = ((LANE_COUNT - 1) * LANE_WIDTH_M) / 2;
   const PALETTES = {
     car: [0x4F86C6, 0x3FB28A, 0xD97706, 0xC75C5C, 0x7C6FD6, 0x2F855A, 0xB45309, 0x64748B],
     motorcycle: [0xE6BB72, 0xD97706],
@@ -106,27 +109,37 @@
       new THREE.BoxGeometry(ROAD_LENGTH, 0.18, ROAD_WIDTH),
       new THREE.MeshStandardMaterial({ map: makeAsphaltTexture(), roughness: 0.92, metalness: 0.02 })
     );
-    asphalt.position.set(250, -0.12, 0);
+    asphalt.position.set(250, -0.12, ROAD_CENTER_Z);
     asphalt.receiveShadow = true;
     roadGroup.add(asphalt);
-    const shoulder = new THREE.Mesh(new THREE.BoxGeometry(ROAD_LENGTH, 0.12, 28), material(0x9BA7B0, 0.95));
-    shoulder.position.set(250, -0.25, 0);
+    const shoulder = new THREE.Mesh(new THREE.BoxGeometry(ROAD_LENGTH, 0.12, ROAD_WIDTH + 10), material(0x9BA7B0, 0.95));
+    shoulder.position.set(250, -0.25, ROAD_CENTER_Z);
     shoulder.receiveShadow = true;
     roadGroup.add(shoulder);
-    for (const z of [-9, 9]) {
+    for (const z of [-2, 6]) {
       const edge = new THREE.Mesh(new THREE.BoxGeometry(ROAD_LENGTH, 0.04, 0.14), material(0xF3F4F6, 0.55));
       edge.position.set(250, 0.02, z);
       roadGroup.add(edge);
     }
-    for (const z of [-4.5, 0, 4.5]) {
-      const lineMaterial = material(0xF7F8FA, 0.45);
-      for (let x = 5; x < ROAD_LENGTH; x += 16) {
-        const dash = new THREE.Mesh(new THREE.BoxGeometry(8, 0.035, 0.09), lineMaterial);
-        dash.position.set(x, 0.03, z);
-        roadGroup.add(dash);
+    const lineMaterial = material(0xF7F8FA, 0.45);
+    for (let x = 5; x < ROAD_LENGTH; x += 16) {
+      const dash = new THREE.Mesh(new THREE.BoxGeometry(8, 0.035, 0.09), lineMaterial);
+      dash.position.set(x, 0.03, 2);
+      roadGroup.add(dash);
+    }
+    const sublaneMaterial = new THREE.MeshBasicMaterial({ color: 0xDCE3DF, transparent: true, opacity: 0.22 });
+    for (let lane = 0; lane < LANE_COUNT; lane += 1) {
+      const laneCenter = lane * LANE_WIDTH_M;
+      for (let track = 1; track < 4; track += 1) {
+        const z = laneCenter - LANE_WIDTH_M / 2 + (LANE_WIDTH_M * track) / 4;
+        for (let x = 4; x < ROAD_LENGTH; x += 13) {
+          const dash = new THREE.Mesh(new THREE.BoxGeometry(5, 0.02, 0.04), sublaneMaterial);
+          dash.position.set(x, 0.025, z);
+          roadGroup.add(dash);
+        }
       }
     }
-    for (const z of [-13, 13]) {
+    for (const z of [-4.5, 8.5]) {
       const verge = new THREE.Mesh(new THREE.BoxGeometry(ROAD_LENGTH, 0.16, 5), material(0xB8C2CC, 0.95));
       verge.position.set(250, -0.22, z);
       verge.receiveShadow = true;
@@ -141,7 +154,7 @@
     const poleMat = material(0x9AA6B0, 0.65, 0, 0.1);
     for (let i = 0; i < 16; i += 1) {
       const x = 15 + i * 32;
-      for (const z of [-8.2, 8.2]) {
+      for (const z of [-5.5, 9.5]) {
         const pole = new THREE.Mesh(poleGeometry, poleMat);
         pole.position.set(x, 0.55, z);
         pole.receiveShadow = true;
@@ -155,24 +168,24 @@
     barrierGroup = new THREE.Group();
     const striped = material(0xe5a34d);
     const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.5, 0.18), material(0x293b40));
-    const board = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.28, 8), striped);
+    const board = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.28, 4), striped);
     board.position.y = 1.25;
     barrierGroup.add(post.clone(), post.clone(), board);
-    barrierGroup.children[0].position.set(0, 0.7, -3.4);
-    barrierGroup.children[1].position.set(0, 0.7, 3.4);
-    for (let z = -3; z <= 3; z += 1.5) {
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.3, 0.45), material(z % 3 ? 0xf2e5b3 : 0x26343d));
+    barrierGroup.children[0].position.set(0, 0.7, -1.7);
+    barrierGroup.children[1].position.set(0, 0.7, 1.7);
+    for (let z = -1.5; z <= 1.5; z += 0.75) {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.3, 0.45), material(Math.round(z / 0.75) % 2 === 0 ? 0xf2e5b3 : 0x26343d));
       stripe.position.set(-0.15, 1.25, z);
       barrierGroup.add(stripe);
     }
-    for (const z of [-7, 7]) {
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.9, 6), material(0xe77335));
-      cone.position.set(0, 0.45, z);
+    for (const z of [-1.2, 1.2]) {
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.75, 6), material(0xe77335));
+      cone.position.set(-0.8, 0.38, z);
       barrierGroup.add(cone);
     }
     glowMaterial = new THREE.MeshBasicMaterial({ color: 0xffb52e, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending });
-    const amber = new THREE.Mesh(new THREE.SphereGeometry(0.23, 8, 8), glowMaterial);
-    amber.position.set(-0.3, 1.75, 0);
+    const amber = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), glowMaterial);
+    amber.position.set(-0.3, 1.65, 0);
     barrierGroup.add(amber);
     barrierGroup.visible = false;
     scene.add(barrierGroup);
@@ -499,8 +512,8 @@
       target.set(selected.position + 22, 1.2, selected.lateralPositionM);
       desiredPosition.set(selected.position - cameraDistance, 22, selected.lateralPositionM + 28);
     } else if (currentMode === 'top') {
-      target.set(250, 0, 0);
-      desiredPosition.set(250, 180, 0.01);
+      target.set(250, 0, 2);
+      desiredPosition.set(250, 180, 2.01);
     } else if (currentMode === 'orbit') {
       target = cameraTarget.clone();
       desiredPosition.set(target.x + Math.cos(orbitAngle) * cameraDistance, 28 + cameraDistance * orbitPitch * 0.45, target.z + Math.sin(orbitAngle) * cameraDistance);
@@ -519,7 +532,12 @@
     const position = frame?.barrierPositionM;
     barrierGroup.visible = position !== null && position !== undefined;
     if (barrierGroup.visible) {
-      barrierGroup.position.set(position, 0, 0);
+      let laneCenter = ROAD_CENTER_Z;
+      if (frame?.scenario === 'partial') {
+        const closed = Number(frame?.closedLane);
+        if (closed === 0 || closed === 1) laneCenter = closed * LANE_WIDTH_M;
+      }
+      barrierGroup.position.set(position, 0, laneCenter);
       barrierGroup.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     }
     if (glowMaterial) glowMaterial.opacity = 0.45 + Math.sin(performance.now() * 0.01) * 0.35;
