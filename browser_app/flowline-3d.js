@@ -18,6 +18,7 @@
   const ROAD_MIN_Z = -LANE_WIDTH_M / 2;
   const ROAD_MAX_Z = ROAD_MIN_Z + ROAD_WIDTH;
   const ROAD_CENTER_Z = (ROAD_MIN_Z + ROAD_MAX_Z) / 2;
+  const VISUAL_Z_SCALE_TOP = 8.5;
 
   const PALETTES = {
     car: [0x4F86C6, 0x3FB28A, 0xD97706, 0xC75C5C, 0x7C6FD6, 0x2F855A, 0xB45309, 0x64748B],
@@ -40,6 +41,7 @@
   const REDUCED_MOTION = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
   let renderer, scene, camera, orthoCamera, perspCamera;
+  let worldGroup;
   let initialized = false, active = false, frame = null;
   let animationFrame = 0, lastTime = 0, fpsStart = 0, fpsFrames = 0;
   let lowGraphics = false, frozen = false, currentMode = 'top';
@@ -61,7 +63,12 @@
   const vehiclePools = {};
   const wheelRadiusByKind = { car: 0.34, motorcycle: 0.26, rickshaw: 0.3, bus: 0.5, truck: 0.52 };
   const prevLateral = new Map();
-  const controls = Array.from(document.querySelectorAll('[data-3d-mode]'));
+  const modeButtons = Array.from(document.querySelectorAll('[data-3d-mode]'));
+  const cameraControls = {
+    enableRotate: false,
+    object: { up: new THREE.Vector3(0, 0, -1) },
+    update() { /* no OrbitControls; custom camera update in render loop */ }
+  };
   const lowGraphicsToggle = document.querySelector('[data-3d-low-graphics]');
   const trailsToggle = document.querySelector('[data-3d-trails]');
   const freezeToggle = document.querySelector('[data-3d-freeze]');
@@ -152,7 +159,7 @@
         }
       }
     }
-    scene.add(roadGroup);
+    worldGroup.add(roadGroup);
   }
 
   function addProps() {
@@ -168,7 +175,7 @@
         propGroup.add(pole);
       }
     }
-    scene.add(propGroup);
+    worldGroup.add(propGroup);
   }
 
   function addBarrier() {
@@ -195,7 +202,7 @@
     amber.position.set(-0.2, 1.45, 0);
     barrierGroup.add(amber);
     barrierGroup.visible = false;
-    scene.add(barrierGroup);
+    worldGroup.add(barrierGroup);
   }
 
   function vehicleGeometry(kind, length, width) { return new THREE.BoxGeometry(length, 1, width); }
@@ -356,14 +363,14 @@
     );
     contactShadows.rotation.x = -Math.PI / 2;
     contactShadows.position.y = 0.01;
-    scene.add(contactShadows);
+    worldGroup.add(contactShadows);
 
     for (const kind of Object.keys(COLORS)) {
       vehiclePools[kind] = [];
       for (let i = 0; i < 60; i++) {
         const g = makeVehicleGroup(kind);
         vehiclePools[kind].push(g);
-        scene.add(g);
+        worldGroup.add(g);
       }
     }
   }
@@ -530,15 +537,21 @@
     if (currentMode === 'top') {
       camera = orthoCamera;
       const x = ROAD_LENGTH / 2;
-      camera.position.set(x, 250, ROAD_CENTER_Z);
+      const z = ROAD_CENTER_Z * VISUAL_Z_SCALE_TOP;
+      camera.position.set(x, 250, z);
       camera.up.set(0, 0, -1);
-      camera.lookAt(x, 0, ROAD_CENTER_Z);
-      cameraTarget.set(x, 0, ROAD_CENTER_Z);
+      camera.lookAt(x, 0, z);
+      cameraControls.object.up.copy(camera.up);
+      cameraControls.enableRotate = false;
+      cameraTarget.set(x, 0, z);
       cameraPosition.copy(camera.position);
       return;
     }
 
     camera = perspCamera;
+    camera.up.set(0, 1, 0);
+    cameraControls.object.up.copy(camera.up);
+    cameraControls.enableRotate = true;
     if (currentMode === 'chase' && selected) {
       const target = new THREE.Vector3(selected.position + 20, 0.5, selected.lateralPositionM);
       const desiredPosition = new THREE.Vector3(selected.position - cameraDistance, 26, selected.lateralPositionM + 34);
@@ -546,13 +559,12 @@
       cameraPosition.lerp(desiredPosition, blend);
       cameraTarget.lerp(target, blend);
       camera.position.copy(cameraPosition);
-      camera.up.set(0, 1, 0);
       camera.lookAt(cameraTarget);
       return;
     }
 
     if (currentMode === 'orbit') {
-      const target = new THREE.Vector3(cameraTarget.x || ROAD_LENGTH / 2, 0, cameraTarget.z || ROAD_CENTER_Z);
+      const target = new THREE.Vector3(cameraTarget.x || ROAD_LENGTH / 2, 0, (cameraTarget.z || ROAD_CENTER_Z));
       const desiredPosition = new THREE.Vector3(
         target.x + Math.cos(orbitAngle) * cameraDistance,
         36 + cameraDistance * orbitPitch * 0.35,
@@ -562,7 +574,6 @@
       cameraPosition.lerp(desiredPosition, blend);
       cameraTarget.lerp(target, blend);
       camera.position.copy(cameraPosition);
-      camera.up.set(0, 1, 0);
       camera.lookAt(cameraTarget);
       return;
     }
@@ -575,7 +586,6 @@
     cameraPosition.lerp(desiredPosition, blend);
     cameraTarget.lerp(target, blend);
     camera.position.copy(cameraPosition);
-    camera.up.set(0, 1, 0);
     camera.lookAt(cameraTarget);
   }
 
@@ -665,6 +675,8 @@
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0xE8ECF1);
     scene.fog = new THREE.Fog(0xE8ECF1, 320, 900);
+    worldGroup = new THREE.Group();
+    scene.add(worldGroup);
     perspCamera = new THREE.PerspectiveCamera(44, 2, 0.1, 1200);
     const aspect = 2;
     const frustumWidth = ROAD_LENGTH + 20;
@@ -692,18 +704,18 @@
     addBarrier();
     createVehicleLayers();
     trailGroup = new THREE.Group();
-    scene.add(trailGroup);
+    worldGroup.add(trailGroup);
     selectedOutline = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.08, 32), new THREE.MeshBasicMaterial({ color: 0x5ac1bd, side: THREE.DoubleSide, transparent: true, opacity: 0.95 }));
     selectedOutline.rotation.x = -Math.PI / 2;
     selectedOutline.visible = false;
-    scene.add(selectedOutline);
+    worldGroup.add(selectedOutline);
     speedLabel = makeLabel('', 'flowline-3d-label');
     eventLabel = makeLabel('', 'flowline-3d-event');
     eventLabel.visible = false;
     flashRing = new THREE.Mesh(new THREE.RingGeometry(3, 3.35, 32), new THREE.MeshBasicMaterial({ color: 0xff6857, transparent: true, opacity: 0.8, side: THREE.DoubleSide }));
     flashRing.rotation.x = -Math.PI / 2;
     flashRing.visible = false;
-    scene.add(flashRing);
+    worldGroup.add(flashRing);
     initialized = true;
     enableLowGraphics(false);
     return true;
@@ -717,8 +729,11 @@
     const aspect = bounds.width / bounds.height;
     perspCamera.aspect = aspect;
     perspCamera.updateProjectionMatrix();
-    const frustumWidth = ROAD_LENGTH + 20; // x in [-10, 510]
-    const frustumHeight = frustumWidth / aspect;
+
+    const topZScale = currentMode === 'top' ? VISUAL_Z_SCALE_TOP : 1;
+    const frustumWidth = ROAD_LENGTH + 30; // x in [-15, 515]
+    const roadVisualHeight = ROAD_WIDTH * topZScale;
+    const frustumHeight = Math.max(roadVisualHeight + 24, frustumWidth / aspect);
     orthoCamera.left = -frustumWidth / 2;
     orthoCamera.right = frustumWidth / 2;
     orthoCamera.top = frustumHeight / 2;
@@ -728,8 +743,17 @@
 
   function setMode(mode) {
     currentMode = mode;
-    controls.forEach((control) => control.classList.toggle('is-active', control.dataset['3dMode'] === mode));
-    camera = mode === 'top' ? orthoCamera : perspCamera;
+    modeButtons.forEach((control) => {
+      const active = control.dataset['3dMode'] === mode;
+      control.classList.toggle('is-active', active);
+      control.setAttribute('aria-pressed', String(active));
+    });
+    const top = mode === 'top';
+    camera = top ? orthoCamera : perspCamera;
+    if (worldGroup) worldGroup.scale.set(1, 1, top ? VISUAL_Z_SCALE_TOP : 1);
+    cameraControls.enableRotate = !top;
+    cameraControls.object.up.set(top ? 0 : 0, top ? 0 : 1, top ? -1 : 0);
+    resize();
   }
 
   function setActive(value) {
@@ -759,7 +783,7 @@
     frame.selectedVehicleIds = [id];
   }
 
-  controls.forEach((control) => control.addEventListener('click', () => setMode(control.dataset['3dMode'])));
+  modeButtons.forEach((control) => control.addEventListener('click', () => setMode(control.dataset['3dMode'])));
   lowGraphicsToggle?.addEventListener('click', () => enableLowGraphics(lowGraphicsToggle.getAttribute('aria-pressed') !== 'true'));
   freezeToggle?.addEventListener('click', () => {
     frozen = !frozen;
@@ -834,7 +858,9 @@
           type: camera?.isOrthographicCamera ? 'orthographic' : 'perspective',
           position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
           up: { x: camera.up.x, y: camera.up.y, z: camera.up.z },
-          target: { x: cameraTarget.x, y: cameraTarget.y, z: cameraTarget.z }
+          target: { x: cameraTarget.x, y: cameraTarget.y, z: cameraTarget.z },
+          controlsEnableRotate: cameraControls.enableRotate,
+          worldGroupScale: worldGroup ? { x: worldGroup.scale.x, y: worldGroup.scale.y, z: worldGroup.scale.z } : null
         }),
         // Research/debug: verify rendered world Box3 against sim footprint.
         getVehicleBox: (id) => {
