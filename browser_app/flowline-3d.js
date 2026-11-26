@@ -54,12 +54,12 @@
   let cameraDragging = false, previousPointer = null;
   let selectedOutline, speedLabel, eventLabel, flashRing;
   let barrierGroup, trailGroup, propGroup, roadGroup;
-  let glowMaterial, contactShadows;
+  let glowMaterial;
+  let contactShadowTexture;
   let lastTrailFrame;
   const trailPool = [];
   const trailMaterials = new Map();
   let trailGeometry;
-  const dummy = new THREE.Object3D();
   
   // Vehicle detail caches
   const MAX_VEHICLES = 260;
@@ -116,6 +116,17 @@
       gradient.addColorStop(1, '#344c5a');
       context.fillStyle = gradient;
       context.fillRect(0, 0, width, height);
+    });
+  }
+
+  function makeContactShadowTexture() {
+    return textureFromCanvas(128, 128, (ctx, w, h) => {
+      const g = ctx.createRadialGradient(w / 2, h / 2, w * 0.1, w / 2, h / 2, w * 0.5);
+      g.addColorStop(0, 'rgba(0,0,0,0.55)');
+      g.addColorStop(0.65, 'rgba(0,0,0,0.28)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
     });
   }
 
@@ -226,6 +237,7 @@
 
   function makeVehicleGroup(kind) {
     const group = new THREE.Group();
+    const base = VEHICLE_BASE_DIMS[kind] || { length: 4, width: 1.8, height: 1.5 };
     const paint = new THREE.MeshPhysicalMaterial({
       color: COLORS[kind], roughness: 0.38, metalness: 0.22, clearcoat: 0.65, clearcoatRoughness: 0.2
     });
@@ -377,6 +389,20 @@
     group.userData.cabPaint = group.userData.cabPaint || paint;
     group.userData.baseY = 0;
     group.visible = false;
+
+    const shadow = new THREE.Mesh(
+      new THREE.PlaneGeometry(base.length * 0.92, base.width * 0.88),
+      new THREE.MeshBasicMaterial({
+        map: contactShadowTexture, transparent: true, opacity: 0.32,
+        depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1
+      })
+    );
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.set(0, 0.005, 0); // relative to vehicle group; group sits at asphalt top y=0.05
+    shadow.renderOrder = 1;
+    group.add(shadow);
+    group.userData.shadow = shadow;
+
     return group;
   }
 
@@ -391,14 +417,7 @@
   };
 
   function createVehicleLayers() {
-    contactShadows = new THREE.InstancedMesh(
-      new THREE.CircleGeometry(1, 10),
-      new THREE.MeshBasicMaterial({ color: 0x071116, transparent: true, opacity: 0.35, depthWrite: false }),
-      MAX_VEHICLES
-    );
-    contactShadows.rotation.x = -Math.PI / 2;
-    contactShadows.position.y = 0.01;
-    worldGroup.add(contactShadows);
+    if (!contactShadowTexture) contactShadowTexture = makeContactShadowTexture();
 
     for (const kind of Object.keys(COLORS)) {
       vehiclePools[kind] = [];
@@ -415,11 +434,9 @@
     for (const kind of Object.keys(vehiclePools)) {
       for (const g of vehiclePools[kind]) g.visible = false;
     }
-    contactShadows.count = 0;
     if (!frame) return;
 
     const indexes = { car: 0, motorcycle: 0, rickshaw: 0, bus: 0, truck: 0 };
-    let shadowIndex = 0;
 
     for (const vehicle of frame.vehicles) {
       const pool = vehiclePools[vehicle.kind];
@@ -463,20 +480,10 @@
       // Brake lights
       const braking = vehicle.acceleration < -0.5;
       const tailColor = braking ? 0xff1a00 : 0x661111;
-      if (g.userData.tailL) { g.userData.tailL.material.color.setHex(tailColor); }
-      if (g.userData.tailR) { g.userData.tailR.material.color.setHex(tailColor); }
-
-      // Contact shadow
-      dummy.position.set(vehicle.position, 0.055, visualLateral);
-      dummy.scale.set(Math.max(1.5, vehicle.length * 0.55), Math.max(0.4, vehicle.width * 0.55), 1);
-      dummy.rotation.set(-Math.PI / 2, 0, 0);
-      dummy.updateMatrix();
-      contactShadows.setMatrixAt(shadowIndex, dummy.matrix);
-      shadowIndex++;
+      const tailEmissive = braking ? 1.6 : 0.45;
+      if (g.userData.tailL) { g.userData.tailL.material.color.setHex(tailColor); g.userData.tailL.material.emissiveIntensity = tailEmissive; }
+      if (g.userData.tailR) { g.userData.tailR.material.color.setHex(tailColor); g.userData.tailR.material.emissiveIntensity = tailEmissive; }
     }
-
-    contactShadows.count = shadowIndex;
-    contactShadows.instanceMatrix.needsUpdate = true;
 
     const selected = frame.vehicles.find((vehicle) => frame.selectedVehicleIds.includes(vehicle.id));
     if (selected) {
