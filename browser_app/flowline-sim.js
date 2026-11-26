@@ -28,6 +28,8 @@
   const COOLDOWN_STEPS = 80;
   const CLOSURE_LOOKAHEAD = 8;
   const CLOSURE_MIN_LOOKAHEAD = 220;
+  const CLOSURE_MERGE_ZONE_MIN = 60;
+  const CLOSURE_MERGE_ZONE_MAX = 110;
   const SPEED_TARGET_OPTIONS_KMH = [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120];
   const SPEED_TARGET_MAX_KMH = 120;
   const SPEED_TARGET_CONGESTION_MARGIN_KMH = 15;
@@ -380,8 +382,11 @@
     const barrierAhead = barrierBlocksLane(world, vehicle.lane)
       && world.barrierPositionM > vehicle.position + vehicle.length / 2;
     const barrierDistance = world.barrierPositionM - vehicle.position - vehicle.length / 2;
+    const mergeZone = CLOSURE_MERGE_ZONE_MIN
+      + ((vehicle.id * 37) % (CLOSURE_MERGE_ZONE_MAX - CLOSURE_MERGE_ZONE_MIN + 1));
     const closureDecisionDistance = Math.max(
       CLOSURE_MIN_LOOKAHEAD,
+      mergeZone,
       vehicle.speed * (vehicle.headway + vehicle.reaction + LANE_CHANGE_DURATION + CLOSURE_LOOKAHEAD)
         + vehicle.speed ** 2 / (2 * vehicle.deceleration)
     );
@@ -890,6 +895,7 @@
         lateralPositionM, lateralChangeElapsed, lateralChangeFromM, lateralChangeTargetM
       });
     }
+    const lateralSpeedCap = (vehicle.kind === 'truck' || vehicle.kind === 'bus') ? 0.9 : 1.4;
     for (const vehicle of state.vehicles) {
       vehicle.previousPosition = vehicle.position;
       vehicle.position = nextPosition.get(vehicle.id);
@@ -900,10 +906,35 @@
       const lateralState = nextLateralStates.get(vehicle.id);
       if (vehicle.lateralChangeFromM !== null) {
         vehicle.previousLateralChangeElapsed = vehicle.lateralChangeElapsed;
-        vehicle.lateralPositionM = lateralState.lateralPositionM;
-        vehicle.lateralChangeElapsed = lateralState.lateralChangeElapsed;
-        vehicle.lateralChangeFromM = lateralState.lateralChangeFromM;
-        vehicle.lateralChangeTargetM = lateralState.lateralChangeTargetM;
+        let targetLat = lateralState.lateralPositionM;
+        const maxDelta = lateralSpeedCap * STEP;
+        const deltaLat = targetLat - vehicle.lateralPositionM;
+        if (Math.abs(deltaLat) > maxDelta) {
+          targetLat = vehicle.lateralPositionM + Math.sign(deltaLat) * maxDelta;
+          // keep change in progress while rate-limited
+          if (lateralState.lateralChangeFromM === null) {
+            vehicle.lateralChangeFromM = vehicle.lateralPositionM;
+            vehicle.lateralChangeTargetM = lateralState.lateralChangeTargetM ?? targetLat;
+          } else {
+            vehicle.lateralChangeFromM = lateralState.lateralChangeFromM;
+            vehicle.lateralChangeTargetM = lateralState.lateralChangeTargetM;
+          }
+          vehicle.lateralChangeElapsed = Math.min(vehicle.lateralChangeDuration - STEP * 0.5, lateralState.lateralChangeElapsed);
+        } else {
+          vehicle.lateralPositionM = targetLat;
+          vehicle.lateralChangeElapsed = lateralState.lateralChangeElapsed;
+          vehicle.lateralChangeFromM = lateralState.lateralChangeFromM;
+          vehicle.lateralChangeTargetM = lateralState.lateralChangeTargetM;
+          // snap finish when close
+          if (vehicle.lateralChangeTargetM !== null && Math.abs(vehicle.lateralChangeTargetM - vehicle.lateralPositionM) < 0.01) {
+            vehicle.lateralPositionM = vehicle.lateralChangeTargetM;
+            vehicle.lateralChangeFromM = null;
+            vehicle.lateralChangeTargetM = null;
+          }
+        }
+        if (vehicle.lateralChangeFromM !== null && Math.abs(vehicle.lateralChangeTargetM - vehicle.lateralPositionM) >= 0.01) {
+          vehicle.lateralPositionM = targetLat;
+        }
       }
       vehicle.lateralSpeedMps = (vehicle.lateralPositionM - vehicle.previousLateralPositionM) / STEP;
       if (vehicle.laneChangeFrom !== null) {

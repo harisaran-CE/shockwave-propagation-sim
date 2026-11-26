@@ -291,7 +291,16 @@
     const tailMat = new THREE.MeshStandardMaterial({ color: 0x661111, emissive: 0xff1a00, emissiveIntensity: 0.6 });
 
     const wheels = [];
-    const addWheel = (x, y, z, radius = wheelRadiusByKind[kind], width = kind === 'motorcycle' ? 0.14 : 0.22) => {
+    const frontWheels = [];
+    const indicators = { left: [], right: [] };
+    const addIndicator = (x, y, z, side) => {
+      const mat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xf59e0b, emissiveIntensity: 0, transparent: true, opacity: 0.35 });
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.12), mat);
+      mesh.position.set(x, y, z);
+      group.add(mesh);
+      indicators[side].push(mesh);
+    };
+    const addWheel = (x, y, z, radius = wheelRadiusByKind[kind], width = kind === 'motorcycle' ? 0.14 : 0.22, isFront = false) => {
       const w = new THREE.Group();
       const tire = new THREE.Mesh(
         new THREE.CylinderGeometry(radius, radius, width, 20),
@@ -313,6 +322,7 @@
       w.userData.baseRadius = radius;
       group.add(w);
       wheels.push(w);
+      if (isFront) frontWheels.push(w);
     };
 
     if (kind === 'car') {
@@ -342,7 +352,9 @@
         const well = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.34, 0.3), wellMat); well.position.set(x, 0.48, z); group.add(well);
       });
       group.add(body, cabin, windshield, rearGlass, sideL, sideR, hood, trunk, grille, bumperF, bumperR, hlL, hlR, tlL, tlR, mirrorL, mirrorR);
-      addWheel(1.35, 0.34, 0.84); addWheel(1.35, 0.34, -0.84); addWheel(-1.35, 0.34, 0.84); addWheel(-1.35, 0.34, -0.84);
+      addWheel(1.35, 0.34, 0.84, 0.34, 0.22, true); addWheel(1.35, 0.34, -0.84, 0.34, 0.22, true); addWheel(-1.35, 0.34, 0.84); addWheel(-1.35, 0.34, -0.84);
+      addIndicator(2.1, 0.62, 0.9, 'left'); addIndicator(2.1, 0.62, -0.9, 'right');
+      addIndicator(-2.1, 0.62, 0.9, 'left'); addIndicator(-2.1, 0.62, -0.9, 'right');
     } else if (kind === 'motorcycle') {
       const frameMat = new THREE.MeshStandardMaterial({ color: 0x30363d, roughness: 0.55, metalness: 0.6 });
       const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.22, 0.32), frameMat); body.position.y = 0.7;
@@ -358,7 +370,9 @@
       const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12), new THREE.MeshStandardMaterial({ color: 0x20252b, roughness: 0.35, metalness: 0.2 }));
       helmet.position.set(-0.02, 1.38, 0);
       group.add(body, tank, seat, fork, handle, fenderF, fenderR, hl, tl, riderBody, helmet);
-      addWheel(0.75, 0.28, 0, 0.28, 0.14); addWheel(-0.75, 0.28, 0, 0.28, 0.14);
+      addWheel(0.75, 0.28, 0, 0.28, 0.14, true); addWheel(-0.75, 0.28, 0, 0.28, 0.14);
+      addIndicator(0.95, 0.82, 0.32, 'left'); addIndicator(0.95, 0.82, -0.32, 'right');
+      addIndicator(-0.95, 0.72, 0.24, 'left'); addIndicator(-0.95, 0.72, -0.24, 'right');
     } else if (kind === 'rickshaw') {
       const canopy = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.08, 1.48), new THREE.MeshStandardMaterial({ color: 0x1f7a4d, roughness: 0.75, metalness: 0.05 }));
       canopy.position.set(-0.15, 1.62, 0);
@@ -372,7 +386,9 @@
       const rearCover = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.45, 1.0), trim); rearCover.position.set(-1.05, 0.72, 0);
       const arch = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.08, 0.38), dark); arch.position.set(0.95, 0.42, 0);
       group.add(canopy, cabin, floor, frontCowl, windshield, hl, tlL, tlR, rearCover, arch);
-      addWheel(0.95, 0.28, 0, 0.28, 0.16); addWheel(-0.8, 0.28, 0.58, 0.28, 0.16); addWheel(-0.8, 0.28, -0.58, 0.28, 0.16);
+      addWheel(0.95, 0.28, 0, 0.28, 0.16, true); addWheel(-0.8, 0.28, 0.58, 0.28, 0.16); addWheel(-0.8, 0.28, -0.58, 0.28, 0.16);
+      addIndicator(1.15, 0.95, 0.72, 'left'); addIndicator(1.15, 0.95, -0.72, 'right');
+      addIndicator(-1.2, 0.8, 0.72, 'left'); addIndicator(-1.2, 0.8, -0.72, 'right');
     } else if (kind === 'bus') {
       const body = new THREE.Mesh(new THREE.BoxGeometry(11.0, 2.45, 2.5), paint); body.position.y = 1.55;
       const roof = new THREE.Mesh(new THREE.BoxGeometry(10.8, 0.16, 2.35), trim); roof.position.set(0, 2.82, 0);
@@ -392,9 +408,11 @@
       const tlR = tlL.clone(); tlR.position.z = -0.9; tlR.name = 'tailR';
       const ac = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.22, 1.2), trim); ac.position.set(-1.5, 2.96, 0);
       group.add(body, roof, frontGlass, frontBumper, rearBumper, door, hlL, hlR, tlL, tlR, ac);
-      addWheel(3.8, 0.5, 1.12, 0.5, 0.28); addWheel(3.8, 0.5, -1.12, 0.5, 0.28);
+      addWheel(3.8, 0.5, 1.12, 0.5, 0.28, true); addWheel(3.8, 0.5, -1.12, 0.5, 0.28, true);
       addWheel(-3.0, 0.5, 1.12, 0.5, 0.28); addWheel(-3.0, 0.5, -1.12, 0.5, 0.28);
       addWheel(-4.0, 0.5, 1.12, 0.5, 0.28); addWheel(-4.0, 0.5, -1.12, 0.5, 0.28);
+      addIndicator(5.45, 0.95, 1.28, 'left'); addIndicator(5.45, 0.95, -1.28, 'right');
+      addIndicator(-5.45, 0.95, 1.28, 'left'); addIndicator(-5.45, 0.95, -1.28, 'right');
     } else if (kind === 'truck') {
       const cab = new THREE.Mesh(new THREE.BoxGeometry(2.8, 2.1, 2.38), paint); cab.position.set(2.85, 1.35, 0);
       group.userData.cabPaint = paint;
@@ -416,18 +434,24 @@
         const ribR = ribL.clone(); ribR.position.z = -1.21; group.add(ribL, ribR);
       }
       group.add(cab, cabRoof, cargo, cabGlass, grille, bumperF, underrun, hlL, hlR, tlL, tlR, mirrorL, mirrorR);
-      addWheel(3.05, 0.52, 1.08, 0.52, 0.3); addWheel(3.05, 0.52, -1.08, 0.52, 0.3);
+      addWheel(3.05, 0.52, 1.08, 0.52, 0.3, true); addWheel(3.05, 0.52, -1.08, 0.52, 0.3, true);
       addWheel(-2.3, 0.52, 1.08, 0.52, 0.3); addWheel(-2.3, 0.52, -1.08, 0.52, 0.3);
       addWheel(-3.3, 0.52, 1.08, 0.52, 0.3); addWheel(-3.3, 0.52, -1.08, 0.52, 0.3);
+      addIndicator(4.2, 0.95, 1.22, 'left'); addIndicator(4.2, 0.95, -1.22, 'right');
+      addIndicator(-4.15, 0.95, 1.22, 'left'); addIndicator(-4.15, 0.95, -1.22, 'right');
     }
 
     group.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     group.userData.wheels = wheels;
+    group.userData.frontWheels = frontWheels;
+    group.userData.indicators = indicators;
     group.userData.tailL = group.getObjectByName('tailL');
     group.userData.tailR = group.getObjectByName('tailR');
     group.userData.paint = paint;
     group.userData.cabPaint = group.userData.cabPaint || paint;
     group.userData.baseY = 0;
+    group.userData.yaw = 0;
+    group.userData.prevVisualZ = null;
     group.visible = false;
 
     const shadow = new THREE.Mesh(
@@ -515,13 +539,23 @@
       prevLateral.set(vehicle.id, lateralSmooth);
       const visualLateral = visualZ(lateralSmooth);
 
-      // Body roll/tilt on lane change, pitch on accel/brake
-      const lateralVel = hasPrev ? (vehicle.lateralPositionM - prev) * 2 : 0;
-      const pitch = Math.max(-0.03, Math.min(0.03, -(vehicle.acceleration || 0) * 0.008));
-      g.position.set(vehicle.position, 0.05, visualLateral);
-      g.rotation.y = -lateralVel * 0.04;
-      g.rotation.z = -lateralVel * 0.018;
+      // Dynamic steering yaw, body roll, turn signals
+      const prevVisualZ = g.userData.prevVisualZ ?? visualLateral;
+      const vz = (visualLateral - prevVisualZ) / Math.max(delta, 1e-3);
+      g.userData.prevVisualZ = visualLateral;
+      const targetYaw = Math.max(-0.28, Math.min(0.28, -Math.atan2(vz, Math.max(vehicle.speed, 3.0))));
+      const yawDamp = 1 - Math.exp(-10 * delta);
+      g.userData.yaw = (g.userData.yaw ?? 0) + (targetYaw - (g.userData.yaw ?? 0)) * yawDamp;
+      g.rotation.y = g.userData.yaw;
       g.rotation.x = pitch;
+      g.rotation.z = Math.max(-0.05, Math.min(0.05, vz * 0.025));
+
+      for (const fw of g.userData.frontWheels || []) fw.rotation.y = targetYaw * 1.4;
+      const blinkOn = Math.abs(vz) > 0.15 && Math.floor(performance.now() / 200) % 2 === 0;
+      const leftOn = blinkOn && vz < -0.15;
+      const rightOn = blinkOn && vz > 0.15;
+      for (const ind of g.userData.indicators?.left || []) { ind.material.emissiveIntensity = leftOn ? 2.2 : 0.0; ind.material.opacity = leftOn ? 1 : 0.35; }
+      for (const ind of g.userData.indicators?.right || []) { ind.material.emissiveIntensity = rightOn ? 2.2 : 0.0; ind.material.opacity = rightOn ? 1 : 0.35; }
 
       // Wheel rotation
       const speed = vehicle.speed || 0;
