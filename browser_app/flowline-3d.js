@@ -375,9 +375,16 @@
       if (g.userData.paint) g.userData.paint.color.setHex(vColor);
       if (g.userData.cabPaint) g.userData.cabPaint.color.setHex(vColor);
 
-      const baseScale = vehicle.kind === 'bus' ? 10 : vehicle.kind === 'truck' ? 8 : vehicle.kind === 'motorcycle' ? 2 : 4;
-      const sx = Math.max(0.6, vehicle.length / baseScale);
-      const sz = Math.max(0.75, vehicle.width / (vehicle.kind === 'motorcycle' ? 0.7 : 1.85));
+      const BASE_DIMS = {
+        car:        { length: 4.2,  width: 1.85 },
+        motorcycle: { length: 2.0,  width: 0.55 },
+        rickshaw:   { length: 2.6,  width: 1.4  },
+        bus:        { length: 11.0, width: 2.5  },
+        truck:      { length: 8.45, width: 2.4  }
+      };
+      const base = BASE_DIMS[vehicle.kind] || { length: vehicle.length || 4, width: vehicle.width || 1.8 };
+      const sx = vehicle.length / base.length;
+      const sz = vehicle.width / base.width;
       g.scale.set(sx, 1, sz);
 
       // Smooth lateral interpolation for realistic lane changes
