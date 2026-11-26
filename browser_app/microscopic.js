@@ -1539,6 +1539,8 @@
     };
   }
 
+  window.__flowline2d = { applySelection, selectVehicle: (id) => applySelection([id]), getSelectedIds: () => Array.from(selectedVehicleIds) };
+
   window.__flowlineTest = {
     run(seed, settings = {}, steps = 0) {
       ui.seed.value = String(seed);
