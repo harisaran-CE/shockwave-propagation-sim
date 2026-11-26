@@ -893,12 +893,10 @@
 
   function setActive(value) {
     active = !!value;
-    if (active) {
-      resize();
-      if (!animationFrame) {
-        fpsStart = performance.now();
-        animationFrame = requestAnimationFrame(render);
-      }
+    if (active) resize();
+    if (initialized && !animationFrame) {
+      fpsStart = performance.now();
+      animationFrame = requestAnimationFrame(render);
     }
   }
 
