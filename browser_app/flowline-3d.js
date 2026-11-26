@@ -14,12 +14,13 @@
   const LANE_WIDTH_M = SIM.LANE_WIDTH_M || 4; // simulation truth
   const SUBLANE_COUNT = SIM.SUBLANE_COUNT || 4;
   const LANE_COUNT = 2;
-  const VISUAL_LANE_WIDTH = 6.0; // 3D-only visual spacing for readability
+  const VISUAL_LANE_WIDTH = 8.0; // 3D-only visual spacing for readability
   const VISUAL_ROAD_WIDTH = LANE_COUNT * VISUAL_LANE_WIDTH;
   const VISUAL_ROAD_MIN_Z = -VISUAL_LANE_WIDTH / 2;
   const VISUAL_ROAD_MAX_Z = VISUAL_ROAD_MIN_Z + VISUAL_ROAD_WIDTH;
   const VISUAL_ROAD_CENTER_Z = (VISUAL_ROAD_MIN_Z + VISUAL_ROAD_MAX_Z) / 2;
   const visualZ = (simZ) => (simZ / LANE_WIDTH_M) * VISUAL_LANE_WIDTH;
+  const TOP_FRUSTUM_WIDTH = 115;
 
   const PALETTES = {
     car: [0x4F86C6, 0x3FB28A, 0xD97706, 0xC75C5C, 0x7C6FD6, 0x2F855A, 0xB45309, 0x64748B],
@@ -49,6 +50,7 @@
   let cameraDistance = 70, orbitAngle = 0.32, orbitPitch = 0.55;
   let cameraTarget = new THREE.Vector3(250, 0, 0);
   let cameraPosition = new THREE.Vector3(195, 38, 42);
+  let topPanX = 180;
   let cameraDragging = false, previousPointer = null;
   let selectedOutline, speedLabel, eventLabel, flashRing;
   let barrierGroup, trailGroup, propGroup, roadGroup;
@@ -537,7 +539,9 @@
 
     if (currentMode === 'top') {
       camera = orthoCamera;
-      const x = ROAD_LENGTH / 2;
+      const followX = selected ? selected.position : topPanX;
+      topPanX = Math.max(TOP_FRUSTUM_WIDTH / 2, Math.min(ROAD_LENGTH - TOP_FRUSTUM_WIDTH / 2, followX));
+      const x = topPanX;
       const z = VISUAL_ROAD_CENTER_Z;
       camera.position.set(x, 280, z);
       camera.up.set(0, 0, -1);
@@ -680,11 +684,8 @@
     worldGroup = new THREE.Group();
     scene.add(worldGroup);
     perspCamera = new THREE.PerspectiveCamera(44, 2, 0.1, 1200);
-    const aspect = 2;
-    const frustumWidth = ROAD_LENGTH + 20;
-    const frustumHeight = frustumWidth / aspect;
-    orthoCamera = new THREE.OrthographicCamera(-frustumWidth / 2, frustumWidth / 2, frustumHeight / 2, -frustumHeight / 2, 0.1, 2000);
-    camera = orthoCamera;
+    orthoCamera = new THREE.OrthographicCamera(-TOP_FRUSTUM_WIDTH / 2, TOP_FRUSTUM_WIDTH / 2, 40, -40, 0.1, 2000);
+    camera = perspCamera;
     scene.add(new THREE.HemisphereLight(0xcfe2f3, 0x1a2a1f, 1.15));
     const keyLight = new THREE.DirectionalLight(0xfff0d6, 3.0);
     keyLight.position.set(-80, 140, 70);
@@ -732,7 +733,7 @@
     perspCamera.aspect = aspect;
     perspCamera.updateProjectionMatrix();
 
-    const frustumWidth = ROAD_LENGTH + 30; // x in [-15, 515]
+    const frustumWidth = currentMode === 'top' ? TOP_FRUSTUM_WIDTH : ROAD_LENGTH + 30;
     const frustumHeight = Math.max(VISUAL_ROAD_WIDTH + 24, frustumWidth / aspect);
     orthoCamera.left = -frustumWidth / 2;
     orthoCamera.right = frustumWidth / 2;
@@ -805,12 +806,20 @@
 
   canvas.addEventListener('pointerdown', (event) => {
     pointerDown = { x: event.clientX, y: event.clientY, id: event.pointerId };
-    cameraDragging = currentMode === 'orbit';
+    cameraDragging = currentMode === 'orbit' || currentMode === 'top';
     previousPointer = { x: event.clientX, y: event.clientY };
     canvas.setPointerCapture(event.pointerId);
   });
   canvas.addEventListener('pointermove', (event) => {
     if (!cameraDragging || !previousPointer) return;
+    if (currentMode === 'top') {
+      const bounds = canvas.getBoundingClientRect();
+      const worldPerPx = TOP_FRUSTUM_WIDTH / Math.max(1, bounds.width);
+      topPanX -= (event.clientX - previousPointer.x) * worldPerPx;
+      topPanX = Math.max(TOP_FRUSTUM_WIDTH / 2, Math.min(ROAD_LENGTH - TOP_FRUSTUM_WIDTH / 2, topPanX));
+      previousPointer = { x: event.clientX, y: event.clientY };
+      return;
+    }
     orbitAngle -= (event.clientX - previousPointer.x) * 0.008;
     orbitPitch = Math.max(0.1, Math.min(1.25, orbitPitch + (event.clientY - previousPointer.y) * 0.006));
     previousPointer = { x: event.clientX, y: event.clientY };
@@ -838,6 +847,10 @@
   canvas.addEventListener('wheel', (event) => {
     if (currentMode === 'orbit') {
       cameraDistance = Math.max(28, Math.min(180, cameraDistance + event.deltaY * 0.08));
+      event.preventDefault();
+    } else if (currentMode === 'top') {
+      topPanX += event.deltaY * 0.15;
+      topPanX = Math.max(TOP_FRUSTUM_WIDTH / 2, Math.min(ROAD_LENGTH - TOP_FRUSTUM_WIDTH / 2, topPanX));
       event.preventDefault();
     }
   }, { passive: false });
@@ -877,7 +890,7 @@
           }
           return null;
         },
-        constants: { ROAD_LENGTH, LANE_WIDTH_M, SUBLANE_COUNT, LANE_COUNT, VISUAL_LANE_WIDTH, VISUAL_ROAD_WIDTH, VISUAL_ROAD_MIN_Z, VISUAL_ROAD_MAX_Z, VISUAL_ROAD_CENTER_Z }
+        constants: { ROAD_LENGTH, LANE_WIDTH_M, SUBLANE_COUNT, LANE_COUNT, VISUAL_LANE_WIDTH, VISUAL_ROAD_WIDTH, VISUAL_ROAD_MIN_Z, VISUAL_ROAD_MAX_Z, VISUAL_ROAD_CENTER_Z, TOP_FRUSTUM_WIDTH }
       };
       const panel3d = canvas.closest('.viewport-panel');
       if ('ResizeObserver' in window && panel3d) new ResizeObserver(() => { resize(); syncToPanelVisibility(); }).observe(panel3d);
