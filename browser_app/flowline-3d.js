@@ -14,7 +14,7 @@
   const LANE_WIDTH_M = SIM.LANE_WIDTH_M || 4; // simulation truth
   const SUBLANE_COUNT = SIM.SUBLANE_COUNT || 4;
   const LANE_COUNT = 2;
-  const VISUAL_LANE_WIDTH = 8.0; // 3D-only visual spacing for readability
+  const VISUAL_LANE_WIDTH = 10.0; // 3D-only visual spacing for readability
   const VISUAL_ROAD_WIDTH = LANE_COUNT * VISUAL_LANE_WIDTH;
   const VISUAL_ROAD_MIN_Z = -VISUAL_LANE_WIDTH / 2;
   const VISUAL_ROAD_MAX_Z = VISUAL_ROAD_MIN_Z + VISUAL_ROAD_WIDTH;
@@ -121,42 +121,53 @@
 
   function addRoad() {
     roadGroup = new THREE.Group();
-    const asphalt = new THREE.Mesh(
-      new THREE.BoxGeometry(ROAD_LENGTH, 0.02, VISUAL_ROAD_WIDTH),
-      new THREE.MeshStandardMaterial({ map: makeAsphaltTexture(), roughness: 0.92, metalness: 0.02 })
-    );
-    asphalt.position.set(ROAD_LENGTH / 2, -0.01, VISUAL_ROAD_CENTER_Z);
-    asphalt.receiveShadow = true;
-    roadGroup.add(asphalt);
 
+    // Shoulder/verge base: top at y=0.00
     const shoulder = new THREE.Mesh(
-      new THREE.BoxGeometry(ROAD_LENGTH, 0.02, VISUAL_ROAD_WIDTH + 14),
+      new THREE.BoxGeometry(ROAD_LENGTH, 0.04, VISUAL_ROAD_WIDTH + 16),
       material(0xB6C0C8, 0.96)
     );
     shoulder.position.set(ROAD_LENGTH / 2, -0.02, VISUAL_ROAD_CENTER_Z);
     shoulder.receiveShadow = true;
     roadGroup.add(shoulder);
 
+    // Dark asphalt: top at y=0.05, narrower than shoulder
+    const asphalt = new THREE.Mesh(
+      new THREE.BoxGeometry(ROAD_LENGTH, 0.04, VISUAL_ROAD_WIDTH),
+      new THREE.MeshStandardMaterial({ map: makeAsphaltTexture(), roughness: 0.92, metalness: 0.02 })
+    );
+    asphalt.position.set(ROAD_LENGTH / 2, 0.03, VISUAL_ROAD_CENTER_Z);
+    asphalt.receiveShadow = true;
+    roadGroup.add(asphalt);
+
+    const markingMat = (color, opacity = 1) => new THREE.MeshBasicMaterial({
+      color, transparent: opacity < 1, opacity, depthWrite: false,
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1
+    });
+
+    // Outer edge lines: y=0.07
     for (const z of [VISUAL_ROAD_MIN_Z, VISUAL_ROAD_MAX_Z]) {
-      const edge = new THREE.Mesh(new THREE.BoxGeometry(ROAD_LENGTH, 0.01, 0.16), material(0xF3F4F6, 0.5));
-      edge.position.set(ROAD_LENGTH / 2, 0.011, z);
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(ROAD_LENGTH, 0.01, 0.18), markingMat(0xF3F4F6));
+      edge.position.set(ROAD_LENGTH / 2, 0.07, z);
       roadGroup.add(edge);
     }
 
-    const lineMaterial = material(0xF7F8FA, 0.45);
+    // Center dashed divider: y=0.07
+    const lineMaterial = markingMat(0xF7F8FA);
     for (let x = 5; x < ROAD_LENGTH; x += 16) {
-      const dash = new THREE.Mesh(new THREE.BoxGeometry(8, 0.01, 0.12), lineMaterial);
-      dash.position.set(x, 0.012, VISUAL_ROAD_CENTER_Z);
+      const dash = new THREE.Mesh(new THREE.BoxGeometry(8, 0.01, 0.14), lineMaterial);
+      dash.position.set(x, 0.07, VISUAL_ROAD_CENTER_Z);
       roadGroup.add(dash);
     }
 
-    const sublaneMaterial = new THREE.MeshBasicMaterial({ color: 0xDCE3DF, transparent: true, opacity: 0.28 });
+    // Continuous dotted/sublane guide lines: y=0.07
+    const sublaneMaterial = markingMat(0xDCE3DF, 0.32);
     for (let lane = 0; lane < LANE_COUNT; lane += 1) {
       const laneCenter = lane * VISUAL_LANE_WIDTH;
       for (let track = 1; track < SUBLANE_COUNT; track += 1) {
         const z = laneCenter - VISUAL_LANE_WIDTH / 2 + (VISUAL_LANE_WIDTH * track) / SUBLANE_COUNT;
-        const line = new THREE.Mesh(new THREE.BoxGeometry(ROAD_LENGTH, 0.008, 0.045), sublaneMaterial);
-        line.position.set(ROAD_LENGTH / 2, 0.0105, z);
+        const line = new THREE.Mesh(new THREE.BoxGeometry(ROAD_LENGTH, 0.008, 0.06), sublaneMaterial);
+        line.position.set(ROAD_LENGTH / 2, 0.07, z);
         roadGroup.add(line);
       }
     }
@@ -183,17 +194,17 @@
     barrierGroup = new THREE.Group();
     const striped = material(0xe5a34d);
     const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.2, 0.18), material(0x293b40));
-    const board = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.24, VISUAL_LANE_WIDTH - 0.4), striped);
+    const board = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.24, VISUAL_LANE_WIDTH - 0.6), striped);
     board.position.y = 1.05;
     barrierGroup.add(post.clone(), post.clone(), board);
-    barrierGroup.children[0].position.set(0, 0.6, -(VISUAL_LANE_WIDTH / 2 - 0.35));
-    barrierGroup.children[1].position.set(0, 0.6, (VISUAL_LANE_WIDTH / 2 - 0.35));
-    for (let z = -2.2; z <= 2.2; z += 0.75) {
+    barrierGroup.children[0].position.set(0, 0.6, -(VISUAL_LANE_WIDTH / 2 - 0.45));
+    barrierGroup.children[1].position.set(0, 0.6, (VISUAL_LANE_WIDTH / 2 - 0.45));
+    for (let z = -2.8; z <= 2.8; z += 0.8) {
       const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.26, 0.45), material(Math.round(z / 0.75) % 2 === 0 ? 0xf2e5b3 : 0x26343d));
       stripe.position.set(-0.13, 1.05, z);
       barrierGroup.add(stripe);
     }
-    for (const z of [-1.8, 1.8]) {
+    for (const z of [-2.2, 2.2]) {
       const cone = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.65, 6), material(0xe77335));
       cone.position.set(-0.7, 0.325, z);
       barrierGroup.add(cone);
@@ -415,7 +426,7 @@
       // Body roll/tilt on lane change, pitch on accel/brake
       const lateralVel = (vehicle.lateralPositionM - prev) * 2;
       const pitch = Math.max(-0.03, Math.min(0.03, -(vehicle.acceleration || 0) * 0.008));
-      g.position.set(vehicle.position, 0.02, visualLateral);
+      g.position.set(vehicle.position, 0.05, visualLateral);
       g.rotation.y = -lateralVel * 0.04;
       g.rotation.z = -lateralVel * 0.018;
       g.rotation.x = pitch;
@@ -433,7 +444,7 @@
       if (g.userData.tailR) { g.userData.tailR.material.color.setHex(tailColor); }
 
       // Contact shadow
-      dummy.position.set(vehicle.position, 0.015, visualLateral);
+      dummy.position.set(vehicle.position, 0.055, visualLateral);
       dummy.scale.set(Math.max(1.5, vehicle.length * 0.55), Math.max(0.4, vehicle.width * 0.55), 1);
       dummy.rotation.set(-Math.PI / 2, 0, 0);
       dummy.updateMatrix();
