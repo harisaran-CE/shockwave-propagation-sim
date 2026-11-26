@@ -208,29 +208,69 @@
 
   function addBarrier() {
     barrierGroup = new THREE.Group();
-    const striped = material(0xe5a34d);
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.2, 0.18), material(0x293b40));
-    const board = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.24, VISUAL_LANE_WIDTH - 0.6), striped);
-    board.position.y = 1.05;
-    barrierGroup.add(post.clone(), post.clone(), board);
-    barrierGroup.children[0].position.set(0, 0.6, -(VISUAL_LANE_WIDTH / 2 - 0.45));
-    barrierGroup.children[1].position.set(0, 0.6, (VISUAL_LANE_WIDTH / 2 - 0.45));
-    for (let z = -2.8; z <= 2.8; z += 0.8) {
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.26, 0.45), material(Math.round(z / 0.75) % 2 === 0 ? 0xf2e5b3 : 0x26343d));
-      stripe.position.set(-0.13, 1.05, z);
-      barrierGroup.add(stripe);
-    }
-    for (const z of [-2.2, 2.2]) {
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.65, 6), material(0xe77335));
-      cone.position.set(-0.7, 0.325, z);
-      barrierGroup.add(cone);
-    }
-    glowMaterial = new THREE.MeshBasicMaterial({ color: 0xffb52e, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending });
-    const amber = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), glowMaterial);
-    amber.position.set(-0.2, 1.45, 0);
-    barrierGroup.add(amber);
     barrierGroup.visible = false;
     worldGroup.add(barrierGroup);
+  }
+
+  function rebuildBarrier(scenario, closedLane) {
+    if (!barrierGroup) return;
+    while (barrierGroup.children.length) {
+      const obj = barrierGroup.children.pop();
+      obj.traverse?.((o) => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) {
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          mats.forEach((m) => { if (m.map) m.map.dispose(); m.dispose(); });
+        }
+      });
+    }
+    glowMaterial = null;
+    if (scenario !== 'partial' && scenario !== 'closure') {
+      barrierGroup.visible = false;
+      return;
+    }
+
+    const laneRanges = scenario === 'closure'
+      ? [[VISUAL_ROAD_MIN_Z, VISUAL_ROAD_MAX_Z]]
+      : [closedLane === 1 ? [VISUAL_LANE_WIDTH - VISUAL_LANE_WIDTH / 2, VISUAL_ROAD_MAX_Z] : [VISUAL_ROAD_MIN_Z, VISUAL_LANE_WIDTH / 2]];
+    // lane 0 sim => visual [ -5,5 ], lane 1 sim => [5,15]
+    const normalized = scenario === 'closure'
+      ? [[VISUAL_ROAD_MIN_Z, VISUAL_ROAD_MAX_Z]]
+      : (Number(closedLane) === 1 ? [[VISUAL_LANE_WIDTH / 2, VISUAL_ROAD_MAX_Z]] : [[VISUAL_ROAD_MIN_Z, VISUAL_LANE_WIDTH / 2]]);
+
+    for (const [zMin, zMax] of normalized) {
+      const width = zMax - zMin;
+      const centerZ = (zMin + zMax) / 2;
+      const postMat = material(0x293b40);
+      const postL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.2, 0.18), postMat);
+      postL.position.set(0, 0.6, centerZ - width / 2 + 0.25);
+      const postR = postL.clone(); postR.position.z = centerZ + width / 2 - 0.25;
+      const board = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.24, width - 0.5), material(0xe5a34d));
+      board.position.set(0, 1.05, centerZ);
+      barrierGroup.add(postL, postR, board);
+
+      const stripeMatA = material(0xf2e5b3);
+      const stripeMatB = material(0x26343d);
+      for (let z = zMin + 0.7; z <= zMax - 0.7; z += 0.8) {
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.26, 0.45), Math.round(z) % 2 === 0 ? stripeMatA : stripeMatB);
+        stripe.position.set(-0.13, 1.05, z);
+        barrierGroup.add(stripe);
+      }
+      for (let z = zMin + 1.0; z <= zMax - 1.0; z += Math.max(2.0, width / 3)) {
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.65, 6), material(0xe77335));
+        cone.position.set(-0.7, 0.325, z);
+        barrierGroup.add(cone);
+      }
+    }
+
+    glowMaterial = new THREE.MeshBasicMaterial({ color: 0xffb52e, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending });
+    const amber = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), glowMaterial);
+    amber.position.set(-0.2, 1.45, VISUAL_ROAD_CENTER_Z);
+    if (scenario === 'partial') {
+      amber.position.z = Number(closedLane) === 1 ? (VISUAL_LANE_WIDTH / 2 + VISUAL_ROAD_MAX_Z) / 2 : (VISUAL_ROAD_MIN_Z + VISUAL_LANE_WIDTH / 2) / 2;
+    }
+    barrierGroup.add(amber);
+    barrierGroup.visible = true;
   }
 
   function vehicleGeometry(kind, length, width) { return new THREE.BoxGeometry(length, 1, width); }
@@ -429,12 +469,23 @@
     }
   }
 
+  let lastFrameId = 0;
+
   function updateVehicles(delta) {
     // Hide all pooled vehicles
     for (const kind of Object.keys(vehiclePools)) {
       for (const g of vehiclePools[kind]) g.visible = false;
     }
     if (!frame) return;
+
+    const frameId = frame.stepCount ?? frame.timeSeconds ?? 0;
+    const frameReset = frameId < lastFrameId || frame.vehicles.length === 0;
+    lastFrameId = frameId;
+    const activeIds = new Set(frame.vehicles.map((v) => v.id));
+    for (const id of Array.from(prevLateral.keys())) {
+      if (!activeIds.has(id)) prevLateral.delete(id);
+    }
+    if (frameReset) prevLateral.clear();
 
     const indexes = { car: 0, motorcycle: 0, rickshaw: 0, bus: 0, truck: 0 };
 
@@ -457,14 +508,15 @@
       const sy = (TARGET_HEIGHT[vehicle.kind] || base.height || 1.5) / (base.height || 1.5);
       g.scale.set(sx, sy, sz);
 
-      // Smooth lateral interpolation for realistic lane changes
-      const prev = prevLateral.has(vehicle.id) ? prevLateral.get(vehicle.id) : vehicle.lateralPositionM;
-      const lateralSmooth = prev + (vehicle.lateralPositionM - prev) * Math.min(1, delta * 8);
+      // No smoothing lag on first frame for this id or after reset.
+      const hasPrev = prevLateral.has(vehicle.id);
+      const prev = hasPrev ? prevLateral.get(vehicle.id) : vehicle.lateralPositionM;
+      const lateralSmooth = hasPrev ? prev + (vehicle.lateralPositionM - prev) * Math.min(1, delta * 8) : vehicle.lateralPositionM;
       prevLateral.set(vehicle.id, lateralSmooth);
       const visualLateral = visualZ(lateralSmooth);
 
       // Body roll/tilt on lane change, pitch on accel/brake
-      const lateralVel = (vehicle.lateralPositionM - prev) * 2;
+      const lateralVel = hasPrev ? (vehicle.lateralPositionM - prev) * 2 : 0;
       const pitch = Math.max(-0.03, Math.min(0.03, -(vehicle.acceleration || 0) * 0.008));
       g.position.set(vehicle.position, 0.05, visualLateral);
       g.rotation.y = -lateralVel * 0.04;
@@ -598,16 +650,19 @@
     camera.up.set(0, 1, 0);
     cameraControls.object.up.copy(camera.up);
     cameraControls.enableRotate = true;
-    if (currentMode === 'chase' && selected) {
-      const selZ = visualZ(selected.lateralPositionM);
-      const target = new THREE.Vector3(selected.position + 20, 0.5, selZ);
-      const desiredPosition = new THREE.Vector3(selected.position - cameraDistance, 26, selZ + 34);
-      const blend = 1 - Math.pow(0.0008, Math.min(delta, 0.05));
-      cameraPosition.lerp(desiredPosition, blend);
-      cameraTarget.lerp(target, blend);
-      camera.position.copy(cameraPosition);
-      camera.lookAt(cameraTarget);
-      return;
+    if (currentMode === 'chase') {
+      const lead = selected || frame?.vehicles?.slice().sort((a, b) => b.position - a.position)[0];
+      if (lead) {
+        const selZ = visualZ(lead.lateralPositionM);
+        const target = new THREE.Vector3(lead.position + 20, 0.5, selZ);
+        const desiredPosition = new THREE.Vector3(lead.position - cameraDistance, 26, selZ + 34);
+        const blend = 1 - Math.pow(0.0008, Math.min(delta, 0.05));
+        cameraPosition.lerp(desiredPosition, blend);
+        cameraTarget.lerp(target, blend);
+        camera.position.copy(cameraPosition);
+        camera.lookAt(cameraTarget);
+        return;
+      }
     }
 
     if (currentMode === 'orbit') {
@@ -636,16 +691,20 @@
     camera.lookAt(cameraTarget);
   }
 
+  let lastBarrierKey = '';
+
   function updateBarrier() {
     const position = frame?.barrierPositionM;
-    barrierGroup.visible = position !== null && position !== undefined;
+    const scenario = frame?.scenario || 'busy';
+    const closedLane = frame?.closedLane;
+    const key = `${scenario}|${closedLane}|${position ?? ''}`;
+    if (key !== lastBarrierKey) {
+      rebuildBarrier(scenario, closedLane);
+      lastBarrierKey = key;
+    }
+    barrierGroup.visible = (scenario === 'partial' || scenario === 'closure') && position !== null && position !== undefined;
     if (barrierGroup.visible) {
-      let laneCenterSim = ROAD_CENTER_Z;
-      if (frame?.scenario === 'partial') {
-        const closed = Number(frame?.closedLane);
-        if (closed === 0 || closed === 1) laneCenterSim = closed * LANE_WIDTH_M;
-      }
-      barrierGroup.position.set(position, 0, visualZ(laneCenterSim));
+      barrierGroup.position.set(position, 0, 0);
       barrierGroup.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     }
     if (glowMaterial) glowMaterial.opacity = 0.45 + Math.sin(performance.now() * 0.01) * 0.35;
