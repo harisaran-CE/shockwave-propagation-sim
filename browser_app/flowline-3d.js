@@ -245,17 +245,17 @@
         new THREE.CylinderGeometry(radius, radius, width, 20),
         new THREE.MeshStandardMaterial({ color: 0x14181c, roughness: 0.88, metalness: 0.04 })
       );
-      tire.rotation.z = Math.PI / 2;
+      tire.rotation.x = Math.PI / 2;
       const rim = new THREE.Mesh(
         new THREE.CylinderGeometry(radius * 0.62, radius * 0.62, width * 1.02, 14),
         new THREE.MeshStandardMaterial({ color: 0xb8c2cc, roughness: 0.3, metalness: 0.65 })
       );
-      rim.rotation.z = Math.PI / 2;
+      rim.rotation.x = Math.PI / 2;
       const hub = new THREE.Mesh(
         new THREE.CylinderGeometry(radius * 0.22, radius * 0.22, width * 1.05, 10),
         new THREE.MeshStandardMaterial({ color: 0x8a939d, roughness: 0.35, metalness: 0.7 })
       );
-      hub.rotation.z = Math.PI / 2;
+      hub.rotation.x = Math.PI / 2;
       w.add(tire, rim, hub);
       w.position.set(x, y, z);
       w.userData.baseRadius = radius;
@@ -458,7 +458,7 @@
       const speed = vehicle.speed || 0;
       const radius = wheelRadiusByKind[vehicle.kind] || 0.35;
       const rotDelta = (speed / Math.max(0.1, radius)) * delta;
-      for (const w of g.userData.wheels) w.rotation.x += rotDelta;
+      for (const w of g.userData.wheels) w.rotation.z -= rotDelta;
 
       // Brake lights
       const braking = vehicle.acceleration < -0.5;
