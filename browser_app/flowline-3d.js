@@ -252,20 +252,20 @@
       addWheel(1.35, 0.34, 0.82); addWheel(1.35, 0.34, -0.82);
       addWheel(-1.35, 0.34, 0.82); addWheel(-1.35, 0.34, -0.82);
     } else if (kind === 'motorcycle') {
-      body = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.45, 0.55), paint);
+      body = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.45, 0.75), paint);
       body.position.y = 0.72;
-      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.2, 0.5), dark);
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.2, 0.55), dark);
       seat.position.set(-0.3, 0.98, 0);
-      const tank = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.35, 0.45), paint);
+      const tank = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.35, 0.5), paint);
       tank.position.set(0.25, 0.95, 0);
-      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.9), chrome);
+      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.8), chrome);
       handle.position.set(0.75, 1.1, 0);
-      const hl = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), lightMat);
+      const hl = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), lightMat);
       hl.position.set(1.0, 0.85, 0);
-      const tl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.15), tailMat);
+      const tl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.12), tailMat);
       tl.position.set(-1.0, 0.75, 0); tl.name = 'tailL';
       group.add(body, seat, tank, handle, hl, tl);
-      addWheel(0.75, 0.26, 0); addWheel(-0.75, 0.26, 0);
+      addWheel(0.75, 0.28, 0); addWheel(-0.75, 0.28, 0);
     } else if (kind === 'bus') {
       body = new THREE.Mesh(new THREE.BoxGeometry(11, 2.6, 2.5), paint);
       body.position.y = 1.55;
@@ -288,36 +288,36 @@
       addWheel(-3.2, 0.5, 1.15); addWheel(-3.2, 0.5, -1.15);
     } else if (kind === 'truck') {
       const cab = new THREE.Mesh(new THREE.BoxGeometry(2.8, 2.2, 2.4), paint);
-      cab.position.set(2.8, 1.35, 0);
+      cab.position.set(2.85, 1.35, 0);
       group.userData.cabPaint = paint;
-      const cargo = new THREE.Mesh(new THREE.BoxGeometry(5.5, 2.0, 2.35), new THREE.MeshStandardMaterial({ color: 0x88939a, roughness: 0.6, metalness: 0.2 }));
-      cargo.position.set(-1.5, 1.35, 0);
+      const cargo = new THREE.Mesh(new THREE.BoxGeometry(5.5, 2.0, 2.4), new THREE.MeshStandardMaterial({ color: 0x88939a, roughness: 0.6, metalness: 0.2 }));
+      cargo.position.set(-1.45, 1.35, 0);
       const cabGlass = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.9, 2.0), glass);
-      cabGlass.position.set(4.18, 1.75, 0);
+      cabGlass.position.set(4.23, 1.75, 0);
       const hl = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.22, 0.35), lightMat);
-      hl.position.set(4.2, 0.75, 0.8);
+      hl.position.set(4.25, 0.75, 0.8);
       const hr = hl.clone(); hr.position.z = -0.8;
       const tl = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.25, 0.4), tailMat);
       tl.position.set(-4.25, 0.8, 0.85); tl.name = 'tailL';
       const tr = tl.clone(); tr.position.z = -0.85; tr.name = 'tailR';
       group.add(cab, cargo, cabGlass, hl, hr, tl, tr);
-      addWheel(3.0, 0.52, 1.1); addWheel(3.0, 0.52, -1.1);
-      addWheel(-2.8, 0.52, 1.1); addWheel(-2.8, 0.52, -1.1);
+      addWheel(3.05, 0.52, 1.1); addWheel(3.05, 0.52, -1.1);
+      addWheel(-2.85, 0.52, 1.1); addWheel(-2.85, 0.52, -1.1);
     } else { // rickshaw
-      body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.3, 1.4), paint);
+      body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.3, 1.45), paint);
       body.position.y = 0.85;
-      const roof = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.08, 1.45), dark);
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.08, 1.5), dark);
       roof.position.set(-0.1, 1.65, 0);
-      const frontGlass = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.7, 1.2), glass);
+      const frontGlass = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.7, 1.25), glass);
       frontGlass.position.set(0.95, 1.25, 0);
       frontGlass.rotation.z = -0.2;
       const hl = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), lightMat);
       hl.position.set(1.32, 0.7, 0);
       const tl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.12, 0.2), tailMat);
-      tl.position.set(-1.3, 0.75, 0.45); tl.name = 'tailL';
-      const tr = tl.clone(); tr.position.z = -0.45; tr.name = 'tailR';
+      tl.position.set(-1.3, 0.75, 0.5); tl.name = 'tailL';
+      const tr = tl.clone(); tr.position.z = -0.5; tr.name = 'tailR';
       group.add(body, roof, frontGlass, hl, tl, tr);
-      addWheel(0.9, 0.3, 0); addWheel(-0.8, 0.3, 0.55); addWheel(-0.8, 0.3, -0.55);
+      addWheel(0.9, 0.3, 0); addWheel(-0.8, 0.3, 0.6); addWheel(-0.8, 0.3, -0.6);
     }
 
     group.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
@@ -330,6 +330,14 @@
     group.visible = false;
     return group;
   }
+
+  const VEHICLE_BASE_DIMS = {
+    car:        { length: 4.32, width: 1.85 },
+    motorcycle: { length: 2.00, width: 0.75 },
+    rickshaw:   { length: 2.60, width: 1.45 },
+    bus:        { length: 11.00, width: 2.50 },
+    truck:      { length: 8.50, width: 2.40 }
+  };
 
   function createVehicleLayers() {
     contactShadows = new THREE.InstancedMesh(
@@ -375,14 +383,7 @@
       if (g.userData.paint) g.userData.paint.color.setHex(vColor);
       if (g.userData.cabPaint) g.userData.cabPaint.color.setHex(vColor);
 
-      const BASE_DIMS = {
-        car:        { length: 4.2,  width: 1.85 },
-        motorcycle: { length: 2.0,  width: 0.55 },
-        rickshaw:   { length: 2.6,  width: 1.4  },
-        bus:        { length: 11.0, width: 2.5  },
-        truck:      { length: 8.45, width: 2.4  }
-      };
-      const base = BASE_DIMS[vehicle.kind] || { length: vehicle.length || 4, width: vehicle.width || 1.8 };
+      const base = VEHICLE_BASE_DIMS[vehicle.kind] || { length: vehicle.length || 4, width: vehicle.width || 1.8 };
       const sx = vehicle.length / base.length;
       const sz = vehicle.width / base.width;
       g.scale.set(sx, 1, sz);
