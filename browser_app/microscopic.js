@@ -879,22 +879,28 @@
     report.hidden = false;
   }
 
+    function durationComplete() {
+      const limit = Number(ui.duration.value);
+      return limit > 0 && state.time >= limit;
+    }
+
     function setRunning(value) {
     running = value;
+    const complete = durationComplete();
     const statusText = runningSlow ? 'RUNNING SLOW' : running ? 'RUNNING' : (
       viewFrameIndex !== null ? 'HISTORY' : state.endReached ? 'CONGESTION' : (
-        state.time >= Number(ui.duration.value) ? 'COMPLETE' : (state.time ? 'PAUSED' : 'READY')
+        complete ? 'COMPLETE' : (state.time ? 'PAUSED' : 'READY')
       )
     );
     ui.status.textContent = statusText;
-    if (ui.playIcon) ui.playIcon.textContent = running ? '⏸' : '▶';
-    if (ui.playText) ui.playText.textContent = running ? 'Pause' : viewFrameIndex !== null ? 'Replay' : (state.endReached || state.time >= Number(ui.duration.value) ? 'Run' : (state.time ? 'Resume' : 'Run'));
+    if (ui.playIcon) ui.playIcon.textContent = running ? 'â¸' : 'â–¶';
+    if (ui.playText) ui.playText.textContent = running ? 'Pause' : viewFrameIndex !== null ? 'Replay' : (state.endReached || complete ? 'Run' : (state.time ? 'Resume' : 'Run'));
     const badge = $('microStatusBadge');
-    if (badge) badge.className = 'status-badge' + (running ? ' is-running' : viewFrameIndex !== null ? ' is-history' : (!running && (state.endReached || state.time >= Number(ui.duration.value))) ? ' is-complete' : '');
+    if (badge) badge.className = 'status-badge' + (running ? ' is-running' : viewFrameIndex !== null ? ' is-history' : (!running && (state.endReached || complete)) ? ' is-complete' : '');
     ui.status.classList.toggle('is-running', running);
     ui.status.classList.toggle('is-history', viewFrameIndex !== null);
     ui.status.classList.toggle('is-congestion', !running && state.endReached);
-    ui.status.classList.toggle('is-complete', !running && !state.endReached && state.time >= Number(ui.duration.value));
+    ui.status.classList.toggle('is-complete', !running && !state.endReached && complete);
   }
 
   function showNumericalError(vehicle, field) {
@@ -964,7 +970,7 @@
     if (state.endReached) accumulator = 0;
     if (!validateNumericalState()) return;
     draw();
-    if (state.endReached || state.time >= Number(ui.duration.value)) {
+    if (state.endReached || durationComplete()) {
       if (state.frames[state.frames.length - 1]?.timeSeconds !== state.time) recordFrame();
       updateTimelineReadout();
       setRunning(false);
@@ -987,7 +993,7 @@
     } else {
       viewFrameIndex = null;
       replayingHistory = false;
-      if ((state.endReached || state.time >= Number(ui.duration.value)) && !reset()) return;
+      if ((state.endReached || durationComplete()) && !reset()) return;
     }
     setRunning(true);
     previousTime = 0;
