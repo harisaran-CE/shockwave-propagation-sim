@@ -550,6 +550,7 @@ import * as THREE from './vendor/three.module.min.js';
       g.rotation.y = g.userData.yaw;
       g.rotation.x = pitch;
       g.rotation.z = Math.max(-0.05, Math.min(0.05, vz * 0.025));
+      g.position.set(vehicle.position, 0.05, visualLateral);
 
       for (const fw of g.userData.frontWheels || []) fw.rotation.y = targetYaw * 1.4;
       const blinkOn = Math.abs(vz) > 0.15 && Math.floor(performance.now() / 200) % 2 === 0;
