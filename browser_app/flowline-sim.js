@@ -149,12 +149,9 @@
     for (const other of vehicles) {
       if (other.id === exceptId) continue;
       if (other.id === ignoredId && !isHaltRequested(other)) continue;
-      const haltedBlock = isHaltRequested(other) && other.lane === lane;
-      const lateralGap = haltedBlock
-        ? -Infinity
-        : Math.abs(other.lateralPositionM - subjectLateral)
-          - (other.width + width) / 2;
-      if (!haltedBlock && lateralGap >= LATERAL_CLEARANCE_M - GEOMETRY_EPSILON_M) continue;
+      const lateralGap = Math.abs(other.lateralPositionM - subjectLateral)
+        - (other.width + width) / 2;
+      if (lateralGap >= LATERAL_CLEARANCE_M - GEOMETRY_EPSILON_M) continue;
       const isAhead = other.position > position
         || (other.position === position && other.id < exceptId);
       if (isAhead && (!leader || other.position < leader.position)) leader = other;
