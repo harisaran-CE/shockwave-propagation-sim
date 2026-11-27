@@ -546,6 +546,7 @@ import * as THREE from './vendor/three.module.min.js';
       const targetYaw = Math.max(-0.28, Math.min(0.28, -Math.atan2(vz, Math.max(vehicle.speed, 3.0))));
       const yawDamp = 1 - Math.exp(-10 * delta);
       g.userData.yaw = (g.userData.yaw ?? 0) + (targetYaw - (g.userData.yaw ?? 0)) * yawDamp;
+      const pitch = Math.max(-0.03, Math.min(0.03, -(vehicle.acceleration || 0) * 0.008));
       g.rotation.y = g.userData.yaw;
       g.rotation.x = pitch;
       g.rotation.z = Math.max(-0.05, Math.min(0.05, vz * 0.025));
