@@ -148,8 +148,8 @@
     const width = subjectWidth ?? subject?.width ?? profiles.car.width[0];
     for (const other of vehicles) {
       if (other.id === exceptId) continue;
-      if (other.id === ignoredId && !isHaltedObstacle(other)) continue;
-      const haltedBlock = isHaltedObstacle(other) && other.lane === lane;
+      if (other.id === ignoredId && !isHaltRequested(other)) continue;
+      const haltedBlock = isHaltRequested(other) && other.lane === lane;
       const lateralGap = haltedBlock
         ? -Infinity
         : Math.abs(other.lateralPositionM - subjectLateral)
