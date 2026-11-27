@@ -353,6 +353,10 @@
   }
 
   function proposalFor(world, state, vehicle) {
+    if (vehicle.requestedSpeedKmh === 0) {
+      vehicle.waitingForMerge = false;
+      return null;
+    }
     if (vehicle.cooldown > 0 || vehicle.lateralChangeFromM !== null) return null;
     if (vehicle.returnLane !== null) {
       if (!vehicle.passedTarget || state.time - vehicle.passedTargetTime < RETURN_LANE_DELAY
@@ -402,13 +406,16 @@
     const passTarget = currentLeader;
     const currentGap = currentLeader.position - currentLeader.length / 2
       - vehicle.position - vehicle.length / 2;
+    const leaderIsHalted = currentLeader.kind !== 'barrier'
+      && currentLeader.requestedSpeedKmh === 0
+      && (currentLeader.speed ?? 0) < 0.5;
     const queuedAtFullClosure = world.scenario === 'closure'
       && barrierAhead && barrierDistance <= closureDecisionDistance;
     const needsPass = !queuedAtFullClosure && currentLeader.kind !== 'barrier'
-      && closingSpeed >= MIN_PASSING_CLOSING_SPEED
-      && currentGap
-        <= Math.max(25,
-        closingSpeed * PASSING_LOOKAHEAD);
+      && (leaderIsHalted
+        ? currentGap <= Math.max(40, vehicle.speed * (vehicle.headway + vehicle.reaction + LANE_CHANGE_DURATION) + 20)
+        : (closingSpeed >= MIN_PASSING_CLOSING_SPEED
+          && currentGap <= Math.max(25, closingSpeed * PASSING_LOOKAHEAD)));
     if (!needsClosureMerge && !needsPass) {
       vehicle.waitingForMerge = false;
       return null;
