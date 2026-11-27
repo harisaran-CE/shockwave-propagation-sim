@@ -907,6 +907,11 @@
       vehicle.position = nextPosition.get(vehicle.id);
       vehicle.speed = nextSpeeds.get(vehicle.id);
       vehicle.acceleration = nextAccelerations.get(vehicle.id);
+      if (vehicle.requestedSpeedKmh === 0) {
+        vehicle.speed = 0;
+        vehicle.acceleration = 0;
+        vehicle.position = vehicle.previousPosition;
+      }
       vehicle.cooldown = Math.max(0, vehicle.cooldown - 1);
       vehicle.previousLateralPositionM = vehicle.lateralPositionM;
       const lateralState = nextLateralStates.get(vehicle.id);
