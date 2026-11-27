@@ -1,4 +1,4 @@
-﻿import * as THREE from './vendor/three.module.min.js';
+import * as THREE from './vendor/three.module.min.js';
 
 (() => {
   'use strict';
@@ -800,12 +800,28 @@
     }
   }
 
+  function show3dError(message) {
+    try {
+      const host = canvas.closest('.micro-road-wrap') || canvas.parentElement;
+      if (!host) return;
+      let el = host.querySelector('.flowline-3d-error');
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'flowline-3d-error';
+        el.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;color:#8b1e1e;background:rgba(255,255,255,0.92);font:12px/1.4 ui-monospace,monospace;z-index:20;text-align:center;white-space:pre-wrap;';
+        host.appendChild(el);
+      }
+      el.textContent = `3D viewport unavailable\n${message}`;
+    } catch (_) { /* ignore */ }
+  }
+
   function buildScene() {
     try {
       renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
     } catch (error) {
       view3d.disabled = true;
       view3d.title = '3D is unavailable in this browser';
+      show3dError(error?.message || 'WebGL renderer could not be created.');
       return false;
     }
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1029,6 +1045,12 @@
       const panel3d = canvas.closest('.viewport-panel');
       if ('ResizeObserver' in window && panel3d) new ResizeObserver(() => { resize(); syncToPanelVisibility(); }).observe(panel3d);
       if (panel3d && 'MutationObserver' in window) new MutationObserver(syncToPanelVisibility).observe(panel3d, { attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
+      window.addEventListener('error', (event) => {
+        const src = String(event?.filename || '');
+        if (src.includes('flowline-3d.js') || src.includes('three.module.min.js')) {
+          show3dError(event?.message || 'Unhandled 3D runtime error.');
+        }
+      });
       window.dispatchEvent(new Event('flowline3dready'));
       syncToPanelVisibility();
     }
