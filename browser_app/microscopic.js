@@ -345,9 +345,10 @@
 
     const options = speedOptionsForSelection();
     for (const option of ui.selectedSpeedCap.options) {
-      const result = options.find((item) => item.speed === Number(option.value));
+      const speed = Number(option.value);
+      const result = options.find((item) => item.speed === speed);
       option.disabled = !result?.available;
-      const label = `${option.value} km/h`;
+      const label = speed === 0 ? '0 km/h (Halt)' : `${speed} km/h`;
       option.textContent = result?.available ? label : `${label} - unavailable`;
     }
     if (!speedEditActive) {
@@ -363,7 +364,7 @@
     const minSafeSpeed = Math.min(...selected.map(safeSpeedFor));
     ui.speedAvailability.textContent = speedEditActive
       ? 'Edit mode active - playback is slowed to 0.5x while you adjust the requested speed.'
-      : `Requested speed can reach ${minSafeSpeed.toFixed(0)} km/h safely from the selected vehicle${selected.length > 1 ? 's' : ''} forward view; distance rules still take priority.`;
+      : `Requested speed can reach ${minSafeSpeed.toFixed(0)} km/h safely from the selected vehicle${selected.length > 1 ? 's' : ''} forward view; distance rules still take priority. 0 km/h halts the selected vehicle.`;
     ui.cancelSpeedCap.hidden = !speedEditActive;
   }
 
@@ -1363,7 +1364,9 @@
     const target = Number(option.value);
     for (const vehicle of selected) vehicle.requestedSpeedKmh = target;
     speedEditActive = false;
-    state.eventText = `Set ${selected.length} selected vehicle${selected.length === 1 ? '' : 's'} to a requested ${target} km/h travel speed.`;
+    state.eventText = target === 0
+      ? `Halted ${selected.length} selected vehicle${selected.length === 1 ? '' : 's'}.`
+      : `Set ${selected.length} selected vehicle${selected.length === 1 ? '' : 's'} to a requested ${target} km/h travel speed.`;
     recordFrame(true);
     updateInspector();
     draw();
