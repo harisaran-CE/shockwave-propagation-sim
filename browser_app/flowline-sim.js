@@ -92,6 +92,14 @@
       ? vehicle.desiredSpeed : vehicle.requestedSpeedKmh / 3.6;
   }
 
+  function isHaltRequested(vehicle) {
+    return !!vehicle && vehicle.kind !== 'barrier' && vehicle.requestedSpeedKmh === 0;
+  }
+
+  function isHaltedObstacle(vehicle) {
+    return isHaltRequested(vehicle) && (vehicle.speed ?? 0) < 0.5;
+  }
+
   function barrierBlocksLane(world, lane) {
     return world.scenario === 'closure'
       || (world.scenario === 'partial' && lane === world.closedLane);
@@ -139,10 +147,14 @@
       ?? lane * LANE_WIDTH_M;
     const width = subjectWidth ?? subject?.width ?? profiles.car.width[0];
     for (const other of vehicles) {
-      if (other.id === exceptId || other.id === ignoredId) continue;
-      const lateralGap = Math.abs(other.lateralPositionM - subjectLateral)
-        - (other.width + width) / 2;
-      if (lateralGap >= LATERAL_CLEARANCE_M - GEOMETRY_EPSILON_M) continue;
+      if (other.id === exceptId) continue;
+      if (other.id === ignoredId && !isHaltedObstacle(other)) continue;
+      const haltedBlock = isHaltedObstacle(other) && other.lane === lane;
+      const lateralGap = haltedBlock
+        ? -Infinity
+        : Math.abs(other.lateralPositionM - subjectLateral)
+          - (other.width + width) / 2;
+      if (!haltedBlock && lateralGap >= LATERAL_CLEARANCE_M - GEOMETRY_EPSILON_M) continue;
       const isAhead = other.position > position
         || (other.position === position && other.id < exceptId);
       if (isAhead && (!leader || other.position < leader.position)) leader = other;
@@ -240,9 +252,12 @@
       const longitudinalPosition = vehicle.position + vehicle.speed * elapsed;
       for (const other of vehicles) {
         if (other.id === vehicle.id) continue;
-        const otherLongitudinalPosition = other.position + other.speed * elapsed;
+        if (other.id === passingTargetId && !isHaltedObstacle(other)) continue;
+        const otherLongitudinalPosition = isHaltedObstacle(other)
+          ? other.position
+          : other.position + other.speed * elapsed;
         let otherLateralPositionM = other.lateralPositionM;
-        if (other.lateralChangeFromM !== null) {
+        if (other.lateralChangeFromM !== null && !isHaltedObstacle(other)) {
           const otherProgress = Math.min(
             1, (other.lateralChangeElapsed + elapsed) / other.lateralChangeDuration
           );
@@ -250,6 +265,7 @@
           otherLateralPositionM = other.lateralChangeFromM
             + (other.lateralChangeTargetM - other.lateralChangeFromM) * otherEasedProgress;
         }
+        if (isHaltedObstacle(other)) otherLateralPositionM = other.lateralPositionM;
         const lateralGap = Math.abs(otherLateralPositionM - lateralPosition)
           - (other.width + vehicle.width) / 2;
         const longitudinalGap = Math.abs(otherLongitudinalPosition - longitudinalPosition)
@@ -353,7 +369,7 @@
   }
 
   function proposalFor(world, state, vehicle) {
-    if (vehicle.requestedSpeedKmh === 0) {
+    if (isHaltRequested(vehicle)) {
       vehicle.waitingForMerge = false;
       return null;
     }
@@ -406,9 +422,7 @@
     const passTarget = currentLeader;
     const currentGap = currentLeader.position - currentLeader.length / 2
       - vehicle.position - vehicle.length / 2;
-    const leaderIsHalted = currentLeader.kind !== 'barrier'
-      && currentLeader.requestedSpeedKmh === 0
-      && (currentLeader.speed ?? 0) < 0.5;
+    const leaderIsHalted = isHaltRequested(currentLeader);
     const queuedAtFullClosure = world.scenario === 'closure'
       && barrierAhead && barrierDistance <= closureDecisionDistance;
     const needsPass = !queuedAtFullClosure && currentLeader.kind !== 'barrier'
@@ -422,7 +436,8 @@
     }
     const currentAcceleration = idm(vehicle, currentLeader);
     let best = null;
-    if (needsPass && !needsClosureMerge) {
+    const allowSameLaneSqueeze = needsPass && !needsClosureMerge && !leaderIsHalted;
+    if (allowSameLaneSqueeze) {
       for (const lateralPositionM of lateralTrackPositions(vehicle, vehicle.lane)) {
         if (Math.abs(lateralPositionM - vehicle.lateralPositionM) < 0.35
           || !lateralPathIsClear(world, state.vehicles, vehicle, vehicle.lane, lateralPositionM,
@@ -907,10 +922,16 @@
       vehicle.position = nextPosition.get(vehicle.id);
       vehicle.speed = nextSpeeds.get(vehicle.id);
       vehicle.acceleration = nextAccelerations.get(vehicle.id);
-      if (vehicle.requestedSpeedKmh === 0) {
+      if (isHaltRequested(vehicle)) {
         vehicle.speed = 0;
         vehicle.acceleration = 0;
         vehicle.position = vehicle.previousPosition;
+        vehicle.previousLateralPositionM = vehicle.lateralPositionM;
+        vehicle.lateralChangeFromM = null;
+        vehicle.lateralChangeTargetM = null;
+        vehicle.lateralChangeElapsed = 0;
+        vehicle.passingTargetId = null;
+        vehicle.waitingForMerge = false;
       }
       vehicle.cooldown = Math.max(0, vehicle.cooldown - 1);
       vehicle.previousLateralPositionM = vehicle.lateralPositionM;
