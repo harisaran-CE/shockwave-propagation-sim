@@ -484,11 +484,14 @@
         const gain = idm(vehicle, leader) - currentAcceleration;
         const closureGain = needsClosureMerge
           ? 1 + Math.max(0, (closureDecisionDistance - barrierDistance) / 20) : 0;
-        const decisionGain = needsClosureMerge ? closureGain : gain;
+        const haltGain = leaderIsHalted
+          ? 1.5 + Math.max(0, (40 - Math.min(40, currentGap)) / 20)
+          : 0;
+        const decisionGain = needsClosureMerge ? closureGain : (leaderIsHalted ? Math.max(gain, haltGain) : gain);
         const score = decisionGain
           - Math.abs(lateralPositionM - vehicle.lateralPositionM) * 0.05;
-        if ((needsClosureMerge || gain >= MIN_LANE_GAIN)
-          && (!best || score > best.score)) {
+        const gainOk = needsClosureMerge || leaderIsHalted || gain >= MIN_LANE_GAIN;
+        if (gainOk && (!best || score > best.score)) {
           best = {
             vehicle, lane, lateralPositionM,
             gain: decisionGain, score, returning: false,
@@ -497,10 +500,12 @@
         }
       }
     }
-    if (needsClosureMerge && !best && !vehicle.waitingForMerge) {
-      state.eventText = `${profiles[vehicle.kind].label} ${vehicle.id + 1} is waiting for a safe gap before the closure.`;
+    if ((needsClosureMerge || leaderIsHalted) && !best && !vehicle.waitingForMerge) {
+      state.eventText = leaderIsHalted
+        ? `${profiles[vehicle.kind].label} ${vehicle.id + 1} is waiting for a safe gap to bypass halted traffic.`
+        : `${profiles[vehicle.kind].label} ${vehicle.id + 1} is waiting for a safe gap before the closure.`;
     }
-    vehicle.waitingForMerge = needsClosureMerge && !best;
+    vehicle.waitingForMerge = (needsClosureMerge || leaderIsHalted) && !best;
     return best;
   }
 
